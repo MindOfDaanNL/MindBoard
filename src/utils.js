@@ -47,6 +47,7 @@ function publicUser(row) {
     username: row.username,
     fullName: row.full_name,
     avatarColor: row.avatar_color,
+    avatarUrl: row.avatar_url,
     role: row.role,
     status: row.status,
     createdAt: row.created_at

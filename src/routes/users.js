@@ -2,9 +2,41 @@ const express = require('express');
 const { query, queryOne } = require('../db');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { publicUser, hashPassword, verifyPassword, initials } = require('../utils');
+const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 
 const router = express.Router();
 router.use(authenticate);
+
+const AVATAR_DIR = path.join(__dirname, '..', '..', 'public', 'avatars');
+if (!fs.existsSync(AVATAR_DIR)) fs.mkdirSync(AVATAR_DIR, { recursive: true });
+
+function saveAvatar(file) {
+  const ext = path.extname(file.originalFilename || '.png').toLowerCase();
+  const allowed = ['.png', '.jpg', '.jpeg', '.webp', '.gif'];
+  if (!allowed.includes(ext)) throw new Error('Alleen PNG, JPG, WEBP, GIF toegestaan');
+  const filename = `${crypto.randomBytes(16).toString('hex')}${ext}`;
+  const filepath = path.join(AVATAR_DIR, filename);
+  fs.copyFileSync(file.filepath, filepath);
+  return `/avatars/${filename}`;
+}
+
+// POST /api/users/me/avatar — avatar uploaden
+router.post('/me/avatar', async (req, res, next) => {
+  try {
+    if (!req.files || !req.files.avatar || !req.files.avatar[0]) return res.status(400).json({ error: 'Geen bestand geüpload' });
+    const file = req.files.avatar[0];
+    if (!file.mimetype || !file.mimetype.startsWith('image/')) return res.status(400).json({ error: 'Alleen afbeeldingen toegestaan' });
+    if (file.size > 2 * 1024 * 1024) return res.status(400).json({ error: 'Maximaal 2MB' });
+
+    const avatarUrl = saveAvatar(file);
+    await query('UPDATE users SET avatar_url = ? WHERE id = ?', [avatarUrl, req.user.id]);
+    return res.json({ avatar_url: avatarUrl });
+  } catch (e) {
+    return next(e);
+  }
+});
 
 // GET /api/users/me/overview — dashboard: orgs, projecten, toegewezen taken, notificaties
 router.get('/me/overview', async (req, res, next) => {

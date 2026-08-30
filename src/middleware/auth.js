@@ -18,7 +18,7 @@ async function authenticate(req, res, next) {
   try {
     const payload = jwt.verify(token, JWT_SECRET, { issuer: 'mindboard' });
     const user = await queryOne(
-      'SELECT id, email, username, full_name, avatar_color, role, status FROM users WHERE id = ?',
+      'SELECT id, email, username, full_name, avatar_color, avatar_url, role, status FROM users WHERE id = ?',
       [payload.sub]
     );
     if (!user) return res.status(401).json({ error: 'Account bestaat niet meer' });

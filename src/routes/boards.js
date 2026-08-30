@@ -222,4 +222,27 @@ router.delete('/columns/:columnId', async (req, res, next) => {
   }
 });
 
+// POST /api/boards/:boardId/columns/reorder
+router.post('/:boardId/columns/reorder', async (req, res, next) => {
+  try {
+    const boardId = Number(req.params.boardId);
+    const board = await queryOne('SELECT * FROM boards WHERE id = ?', [boardId]);
+    if (!board) return res.status(404).json({ error: 'Bord niet gevonden' });
+    const role = await getProjectRole(req.user.id, board.project_id);
+    if (!['owner', 'admin', 'member'].includes(role)) return res.status(403).json({ error: 'Geen rechten' });
+
+    const { columnIds } = req.body || {};
+    if (!Array.isArray(columnIds) || !columnIds.length) return res.status(400).json({ error: 'columnIds array verplicht' });
+
+    await transaction(async (conn) => {
+      for (let i = 0; i < columnIds.length; i++) {
+        await conn.query('UPDATE columns SET position = ? WHERE id = ? AND board_id = ?', [i, columnIds[i], boardId]);
+      }
+    });
+    return res.json({ ok: true });
+  } catch (e) {
+    return next(e);
+  }
+});
+
 module.exports = router;

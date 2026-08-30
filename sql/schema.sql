@@ -20,19 +20,20 @@ DROP TABLE IF EXISTS invitations;
 DROP TABLE IF EXISTS org_members;
 DROP TABLE IF EXISTS orgs;
 DROP TABLE IF EXISTS sessions;
-DROP TABLE IF EXISTS users;
+-- users tabel NIET droppen om bestaande accounts te behouden
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- ----------------------------------------------------------------------------
 -- Users (accounts + globale rollen)
 -- ----------------------------------------------------------------------------
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id            INT UNSIGNED NOT NULL AUTO_INCREMENT,
   email         VARCHAR(255) NOT NULL,
   username      VARCHAR(64)  NOT NULL,
   password_hash VARCHAR(255) NOT NULL,
   full_name     VARCHAR(128) DEFAULT NULL,
   avatar_color  VARCHAR(16)  DEFAULT '#4f46e5',
+  avatar_url    VARCHAR(512) DEFAULT NULL,
   role          ENUM('admin','user') NOT NULL DEFAULT 'user',
   status        ENUM('active','disabled','invited') NOT NULL DEFAULT 'active',
   created_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

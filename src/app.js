@@ -2,6 +2,7 @@ const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
+const formidable = require('formidable');
 
 const { PUBLIC_DIR, PORT } = require('./config');
 const { ping } = require('./db');
@@ -28,6 +29,17 @@ app.use(requestLogger);
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
+
+// Formidable voor file uploads (alleen op avatar endpoint)
+app.use('/api/users/me/avatar', (req, res, next) => {
+  const form = formidable.default({ multiples: false, maxFileSize: 2 * 1024 * 1024 });
+  form.parse(req, (err, fields, files) => {
+    if (err) return next(err);
+    req.body = fields;
+    req.files = files;
+    next();
+  });
+});
 
 // Rate limiting op auth-endpoints (brute-force bescherming)
 app.use('/api/auth', rateLimit({ windowMs: 60 * 1000, max: 20, name: 'auth' }));
@@ -61,6 +73,9 @@ app.use('/api/admin', adminRoutes);
 app.use('/api', (req, res) => {
   res.status(404).json({ error: `Onbekend endpoint: ${req.method} ${req.originalUrl}` });
 });
+
+// Static avatars
+app.use('/avatars', express.static(path.join(__dirname, '..', 'public', 'avatars'), { maxAge: '1d' }));
 
 // Static frontend (SPA fallback)
 app.get(['/', '/index.html', '/sw.js'], (req, res, next) => {

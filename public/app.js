@@ -119,6 +119,233 @@ function toast(msg, type = 'success') {
   setTimeout(() => el.remove(), 3200);
 }
 
+/* ---------------- Keyboard Shortcuts & Command Palette ---------------- */
+const KEYMAP = {
+  'g d': '#dashboard',
+  'g o': '#orgs',
+  'g p': '#projects',
+  'g s': '#settings',
+  'g n': '#notifications',
+  '/': 'search',
+  'n': 'newTask',
+  'escape': 'closeModal',
+  '?': 'showShortcuts'
+};
+
+let shortcutSequence = '';
+let shortcutTimer = null;
+
+function handleKeyboardShortcut(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  const key = e.key.toLowerCase();
+  if (key === 'escape') {
+    closeModal();
+    $('#user-dropdown').classList.add('hidden');
+    $('#notif-panel').classList.add('hidden');
+    $('#search-results').classList.add('hidden');
+    closeSidebar();
+    return;
+  }
+
+  if (key === '/') {
+    e.preventDefault();
+    $('#search-input').focus();
+    return;
+  }
+
+  if (key === '?') {
+    showShortcutsModal();
+    return;
+  }
+
+  if (key === 'n') {
+    if (location.hash.startsWith('#/board/')) {
+      const boardId = location.hash.split('/')[2];
+      const board = state.current.board?.board;
+      if (board) {
+        const boardData = { board, columns: state.current.board.columns, members: state.current.board.members };
+        showTaskModal(boardData.board, boardData.columns, boardData.members, null);
+      }
+    } else if (location.hash.startsWith('#/project/')) {
+      showProjectModal();
+    } else if (location.hash.startsWith('#/org/')) {
+      showOrgModal();
+    }
+    return;
+  }
+
+  shortcutSequence += ` ${key}`;
+  shortcutSequence = shortcutSequence.trim();
+  clearTimeout(shortcutTimer);
+  shortcutTimer = setTimeout(() => { shortcutSequence = ''; }, 1500);
+
+  if (KEYMAP[shortcutSequence]) {
+    e.preventDefault();
+    const action = KEYMAP[shortcutSequence];
+    if (action.startsWith('#')) {
+      location.hash = action;
+    } else if (action === 'newTask') {
+      // handled above
+    }
+    shortcutSequence = '';
+  }
+}
+
+function showShortcutsModal() {
+  const shortcuts = [
+    ['G → D', 'Dashboard'],
+    ['G → O', 'Organisaties'],
+    ['G → P', 'Projecten'],
+    ['G → S', 'Instellingen'],
+    ['G → N', 'Notificaties'],
+    ['/', 'Zoekfocus'],
+    ['N', 'Nieuwe taak (op bord/project/org)'],
+    ['Esc', 'Sluit modal/dropdown'],
+    ['?', 'Toon deze lijst'],
+    ['Cmd/Ctrl + K', 'Command Palette'],
+  ];
+  openModal(`
+    <div class="modal-header"><h2>Toetsencombinaties</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <table style="width:100%;border-collapse:collapse;font-size:14px">
+        <thead><tr style="text-align:left;color:var(--ink2);border-bottom:1px solid var(--border)"><th style="padding:8px 12px">Sneltoets</th><th style="padding:8px 12px">Actie</th></tr></thead>
+        <tbody>
+          ${shortcuts.map(([k, a]) => `<tr style="border-bottom:1px solid var(--bg)"><td style="padding:8px 12px;font-family:monospace;background:var(--bg);border-radius:4px">${esc(k)}</td><td style="padding:8px 12px">${esc(a)}</td></tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`);
+}
+
+function openCommandPalette() {
+  const commands = [
+    { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', action: () => location.hash = '#/dashboard' },
+    { id: 'orgs', label: 'Organisaties', icon: 'org', action: () => location.hash = '#/orgs' },
+    { id: 'projects', label: 'Projecten', icon: 'project', action: () => location.hash = '#/projects' },
+    { id: 'settings', label: 'Instellingen', icon: 'settings', action: () => location.hash = '#/settings' },
+    { id: 'notifications', label: 'Notificaties', icon: 'bell', action: () => location.hash = '#/notifications' },
+    { id: 'new-task', label: 'Nieuwe taak', icon: 'plus', action: () => {
+      if (location.hash.startsWith('#/board/')) {
+        const boardData = state.current.board;
+        if (boardData) showTaskModal(boardData.board, boardData.columns, boardData.members, null);
+      } else if (location.hash.startsWith('#/project/')) showProjectModal();
+      else if (location.hash.startsWith('#/org/')) showOrgModal();
+      else toast('Ga naar een bord, project of organisatie om een taak aan te maken', 'error');
+    }},
+    { id: 'new-project', label: 'Nieuw project', icon: 'project', action: () => showProjectModal() },
+    { id: 'new-org', label: 'Nieuwe organisatie', icon: 'org', action: () => showOrgModal() },
+    { id: 'theme', label: 'Thema wisselen', icon: state.theme === 'dark' ? 'sun' : 'moon', action: () => setTheme(state.theme === 'dark' ? 'light' : 'dark') },
+    { id: 'shortcuts', label: 'Toetsencombinaties', icon: 'alert', action: () => showShortcutsModal() },
+  ];
+
+  let filtered = commands;
+  let selectedIndex = 0;
+
+  function renderPalette() {
+    const html = `
+      <div class="modal-header" style="padding:12px 16px;border-bottom:none">
+        <div style="display:flex;align-items:center;gap:8px;width:100%">
+          ${icon('search', 18)}
+          <input id="palette-input" type="search" placeholder="Typ een commando…" autocomplete="off" style="flex:1;border:none;background:transparent;font-size:16px;outline:none;color:var(--ink)" autofocus />
+          <span style="font-size:11px;color:var(--ink3);font-family:monospace">⌘K</span>
+        </div>
+      </div>
+      <div class="modal-body" style="padding:0;max-height:400px;overflow-y:auto">
+        ${filtered.map((cmd, i) => `
+          <button class="palette-item ${i === selectedIndex ? 'selected' : ''}" data-cmd="${cmd.id}" style="
+            display:flex;align-items:center;gap:12px;width:100%;padding:12px 16px;border:none;background:${i === selectedIndex ? 'var(--brand-soft)' : 'transparent'};color:var(--ink);text-align:left;font-size:14px;cursor:pointer;min-height:48px
+          ">
+            <span style="color:var(--ink3)">${icon(cmd.icon, 18)}</span>
+            <span>${esc(cmd.label)}</span>
+          </button>`).join('')}
+        ${!filtered.length ? `<div class="empty-state" style="padding:32px"><div class="big">🔍</div>Geen commando's gevonden</div>` : ''}
+      </div>`;
+    $('#modal-root').innerHTML = `<div class="modal-backdrop" id="modal-backdrop"><div class="modal" style="max-width:520px">${html}</div></div>`;
+    $('#palette-input').focus();
+  }
+
+  openModal(''); // placeholder, will be replaced
+  const backdrop = $('#modal-backdrop');
+  if (backdrop) backdrop.remove();
+
+  openModal(`
+    <div class="modal-header" style="padding:12px 16px;border-bottom:none">
+      <div style="display:flex;align-items:center;gap:8px;width:100%">
+        ${icon('search', 18)}
+        <input id="palette-input" type="search" placeholder="Typ een commando…" autocomplete="off" style="flex:1;border:none;background:transparent;font-size:16px;outline:none;color:var(--ink)" autofocus />
+        <span style="font-size:11px;color:var(--ink3);font-family:monospace">⌘K</span>
+      </div>
+    </div>
+    <div class="modal-body" style="padding:0;max-height:400px;overflow-y:auto" id="palette-list">
+      ${filtered.map((cmd, i) => `
+        <button class="palette-item ${i === selectedIndex ? 'selected' : ''}" data-cmd="${cmd.id}" style="
+          display:flex;align-items:center;gap:12px;width:100%;padding:12px 16px;border:none;background:${i === selectedIndex ? 'var(--brand-soft)' : 'transparent'};color:var(--ink);text-align:left;font-size:14px;cursor:pointer;min-height:48px
+        ">
+          <span style="color:var(--ink3)">${icon(cmd.icon, 18)}</span>
+          <span>${esc(cmd.label)}</span>
+        </button>`).join('')}
+    </div>`);
+
+  const input = $('#palette-input');
+  const list = $('#palette-list');
+
+  input.addEventListener('input', () => {
+    const q = input.value.toLowerCase();
+    filtered = commands.filter(c => c.label.toLowerCase().includes(q) || c.id.includes(q));
+    selectedIndex = 0;
+    renderPaletteList();
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectedIndex = Math.min(selectedIndex + 1, filtered.length - 1);
+      renderPaletteList();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectedIndex = Math.max(selectedIndex - 1, 0);
+      renderPaletteList();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (filtered[selectedIndex]) {
+        filtered[selectedIndex].action();
+        closeModal();
+      }
+    } else if (e.key === 'Escape') {
+      closeModal();
+    }
+  });
+
+  function renderPaletteList() {
+    list.innerHTML = filtered.map((cmd, i) => `
+      <button class="palette-item ${i === selectedIndex ? 'selected' : ''}" data-cmd="${cmd.id}" style="
+        display:flex;align-items:center;gap:12px;width:100%;padding:12px 16px;border:none;background:${i === selectedIndex ? 'var(--brand-soft)' : 'transparent'};color:var(--ink);text-align:left;font-size:14px;cursor:pointer;min-height:48px
+      ">
+        <span style="color:var(--ink3)">${icon(cmd.icon, 18)}</span>
+        <span>${esc(cmd.label)}</span>
+      </button>`).join('');
+    $$('.palette-item').forEach((btn, i) => {
+      btn.addEventListener('click', () => {
+        filtered[i].action();
+        closeModal();
+      });
+      btn.addEventListener('mouseenter', () => { selectedIndex = i; renderPaletteList(); });
+    });
+    const selected = $('.palette-item.selected');
+    if (selected) selected.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    openCommandPalette();
+  } else {
+    handleKeyboardShortcut(e);
+  }
+});
+
 /* ---------------- Avatar/initials ---------------- */
 function initials(user) {
   const full = user?.fullName || user?.full_name || user?.username || '?';
@@ -126,6 +353,9 @@ function initials(user) {
 }
 
 function avatarHTML(user, size = 30) {
+  if (user?.avatarUrl || user?.avatar_url) {
+    return `<img class="avatar" src="${esc(user.avatarUrl || user.avatar_url)}" alt="" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover" />`;
+  }
   const color = user?.avatarColor || user?.avatar_color || '#4f46e5';
   return `<span class="avatar" style="background:${esc(color)};width:${size}px;height:${size}px;font-size:${Math.round(size * 0.4)}px">${esc(initials(user))}</span>`;
 }
@@ -143,6 +373,23 @@ function timeAgo(iso) {
   if (s < 86400) return `${Math.floor(s / 3600)} u geleden`;
   if (s < 604800) return `${Math.floor(s / 86400)} d geleden`;
   return fmtDate(iso);
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  return esc(text)
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/`(.+?)`/g, '<code>$1</code>')
+    .replace(/```([\s\S]+?)```/g, '<pre><code>$1</code></pre>')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/^\- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    .replace(/^\d+\. (.+)$/gm, '<li>$1</li>')
+    .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/\n/g, '<br>');
 }
 
 function priorityChip(p) {
@@ -198,10 +445,9 @@ function showApp() {
 function renderTopbar() {
   const u = state.user;
   if (!u) return;
-  $('#btn-user').textContent = initials(u);
-  $('#btn-user').style.background = u.avatarColor || '#4f46e5';
+  $('#btn-user').innerHTML = avatarHTML(u, 38);
   $('#dropdown-user').innerHTML = `
-    <div class="dropdown-user-avatar" style="background:${esc(u.avatarColor || '#4f46e5')}">${esc(initials(u))}</div>
+    <div class="dropdown-user-avatar" style="width:36px;height:36px">${avatarHTML(u, 36)}</div>
     <div class="dropdown-user-info">
       <div class="name">${esc(u.fullName || u.username)}</div>
       <div class="email">${esc(u.email)}</div>
@@ -870,6 +1116,7 @@ function showBoardModal(projectId) {
 }
 
 function showEditProjectModal(project, projectId) {
+  const isArchived = project.status === 'archived';
   openModal(`
     <div class="modal-header"><h2>Project bewerken</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
@@ -879,16 +1126,264 @@ function showEditProjectModal(project, projectId) {
       <textarea id="ep-desc" rows="3">${esc(project.description || '')}</textarea>
       <label>Kleur</label>
       <input id="ep-color" type="color" value="${esc(project.color)}" style="width:80px;height:36px;padding:2px" />
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-top:8px">
+        <input id="ep-archived" type="checkbox" ${isArchived ? 'checked' : ''} />
+        <span>Project archiveren (verbergt uit overzichten)</span>
+      </label>
       <div class="modal-actions">
         <button class="btn-ghost" onclick="closeModal()">Annuleer</button>
         <button class="btn-primary" id="ep-save">Opslaan</button>
       </div>
     </div>`);
   $('#ep-save').addEventListener('click', async () => {
-    await api(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ name: $('#ep-name').value, description: $('#ep-desc').value, color: $('#ep-color').value }) });
+    await api(`/projects/${projectId}`, { method: 'PATCH', body: JSON.stringify({ 
+      name: $('#ep-name').value, 
+      description: $('#ep-desc').value, 
+      color: $('#ep-color').value,
+      status: $('#ep-archived').checked ? 'archived' : 'active'
+    }) });
     toast('Opgeslagen');
     closeModal();
     router();
+  });
+}
+
+/* ---------------- Task Templates ---------------- */
+const DEFAULT_TEMPLATES = [
+  {
+    id: 'bug',
+    name: 'Bug Report',
+    icon: '🐛',
+    description: 'Standaard bug rapportage',
+    title: '[Bug] ',
+    description_template: '## Beschrijving\n\n## Stappen om te reproduceren\n1. \n2. \n3. \n\n## Verwacht gedrag\n\n## Actueel gedrag\n\n## Omgeving\n- OS: \n- Browser: \n- Versie: ',
+    priority: 'high',
+    tags: ['bug'],
+    checklist: [
+      { title: 'Reproduceren', items: ['Stappen bevestigd', 'Root cause gevonden'] },
+      { title: 'Fix', items: ['Fix geïmplementeerd', 'Tests toegevoegd'] },
+      { title: 'Review', items: ['Code review', 'QA getest'] }
+    ]
+  },
+  {
+    id: 'feature',
+    name: 'Feature Request',
+    icon: '💡',
+    description: 'Nieuwe functionaliteit voorstellen',
+    title: '[Feature] ',
+    description_template: '## Probleem / Kans\n\n## Voorgestelde oplossing\n\n## Acceptatiecriteria\n- [ ] \n- [ ] \n- [ ] \n\n## Technische overwegingen\n\n## Prioriteit / Impact',
+    priority: 'medium',
+    tags: ['feature'],
+    checklist: [
+      { title: 'Ontwerp', items: ['Wireframes', 'Technisch ontwerp'] },
+      { title: 'Implementatie', items: ['Backend', 'Frontend', 'Tests'] },
+      { title: 'Release', items: ['Documentatie', 'Changelog', 'Deploy'] }
+    ]
+  },
+  {
+    id: 'task',
+    name: 'Standaard Taak',
+    icon: '📋',
+    description: 'Algemene taak met basis structuur',
+    title: '',
+    description_template: '## Doel\n\n## Taken\n- [ ] \n- [ ] \n- [ ] \n\n## Notities\n',
+    priority: 'medium',
+    tags: [],
+    checklist: [
+      { title: 'Uitvoering', items: ['Stap 1', 'Stap 2', 'Stap 3'] }
+    ]
+  },
+  {
+    id: 'meeting',
+    name: 'Meeting Notities',
+    icon: '📝',
+    description: 'Actiepunten uit een vergadering',
+    title: '[Meeting] ',
+    description_template: '## Datum & Tijd\n\n## Deelnemers\n\n## Agenda\n\n## Besluiten\n\n## Actiepunten\n- [ ] \n- [ ] \n- [ ] ',
+    priority: 'low',
+    tags: ['meeting'],
+    checklist: []
+  },
+  {
+    id: 'release',
+    name: 'Release Checklist',
+    icon: '🚀',
+    description: 'Checklist voor een nieuwe release',
+    title: '[Release] ',
+    description_template: '## Versie\n\n## Wat is nieuw\n\n## Breaking changes\n\n## Migratie stappen\n\n## Rollback plan',
+    priority: 'high',
+    tags: ['release', 'deploy'],
+    checklist: [
+      { title: 'Pre-release', items: ['Tests draaien', 'Changelog bijgewerkt', 'Versie bumped'] },
+      { title: 'Deploy', items: ['Staging deploy', 'Smoke tests', 'Productie deploy'] },
+      { title: 'Post-release', items: ['Monitoring check', 'Team geïnformeerd', 'Documentatie bijgewerkt'] }
+    ]
+  }
+];
+
+function getTemplates() {
+  try {
+    const custom = JSON.parse(localStorage.getItem('mb_task_templates') || '[]');
+    return [...DEFAULT_TEMPLATES, ...custom];
+  } catch (e) {
+    return DEFAULT_TEMPLATES;
+  }
+}
+
+function saveCustomTemplate(template) {
+  try {
+    const custom = JSON.parse(localStorage.getItem('mb_task_templates') || '[]');
+    custom.push({ ...template, id: 'custom_' + Date.now(), custom: true });
+    localStorage.setItem('mb_task_templates', JSON.stringify(custom));
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function showTaskTemplateModal(board, columns, members, onSelect) {
+  const templates = getTemplates();
+  openModal(`
+    <div class="modal-header"><h2>Taak template kiezen</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--ink2);margin-bottom:16px">Kies een template om sneller te starten, of maak een lege taak aan.</p>
+      <div class="template-grid">
+        ${templates.map((t) => `
+          <div class="template-card" data-template="${t.id}">
+            <div class="template-icon" style="background:var(--brand-soft);color:var(--brand)">${esc(t.icon)}</div>
+            <h4>${esc(t.name)}</h4>
+            <p>${esc(t.description)}</p>
+          </div>
+        `).join('')}
+        <div class="template-card" data-template="blank" style="border-style:dashed;border-color:var(--ink3);display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:120px;color:var(--ink3)">
+          ${icon('plus', 28)}
+          <h4 style="margin-top:8px">Lege taak</h4>
+          <p>Start vanaf een schone lei</p>
+        </div>
+      </div>
+      <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+        <button class="btn-ghost btn-sm" id="btn-manage-templates">${icon('edit', 14)} Templates beheren</button>
+      </div>
+    </div>`);
+
+  $$('.template-card').forEach((card) => {
+    card.addEventListener('click', () => {
+      const id = card.dataset.template;
+      if (id === 'blank') {
+        closeModal();
+        onSelect(null);
+        return;
+      }
+      const template = templates.find((t) => t.id === id);
+      if (template) {
+        closeModal();
+        onSelect(template);
+      }
+    });
+  });
+
+  $('#btn-manage-templates')?.addEventListener('click', () => {
+    closeModal();
+    showManageTemplatesModal();
+  });
+}
+
+function showManageTemplatesModal() {
+  const templates = getTemplates().filter(t => t.custom);
+  openModal(`
+    <div class="modal-header"><h2>Eigen templates beheren</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      ${templates.length ? templates.map((t) => `
+        <div class="card" style="margin-bottom:12px;padding:12px;display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <strong>${esc(t.icon)} ${esc(t.name)}</strong>
+            <div style="font-size:12px;color:var(--ink2)">${esc(t.description)}</div>
+          </div>
+          <button class="btn-ghost btn-sm" data-del-template="${t.id}">${icon('trash', 14)} Verwijderen</button>
+        </div>
+      `).join('') : '<p style="color:var(--ink2);text-align:center;padding:24px">Nog geen eigen templates</p>'}
+      <hr style="margin:16px 0;border-color:var(--border)">
+      <button class="btn-primary" id="btn-new-template">${icon('plus', 16)} Nieuw template aanmaken</button>
+    </div>`);
+
+  $$('[data-del-template]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Template verwijderen?')) return;
+      try {
+        const custom = JSON.parse(localStorage.getItem('mb_task_templates') || '[]');
+        const filtered = custom.filter((t) => t.id !== btn.dataset.delTemplate);
+        localStorage.setItem('mb_task_templates', JSON.stringify(filtered));
+        toast('Template verwijderd');
+        showManageTemplatesModal();
+      } catch (e) { toast('Fout bij verwijderen', 'error'); }
+    });
+  });
+
+  $('#btn-new-template').addEventListener('click', () => {
+    closeModal();
+    showCreateTemplateModal();
+  });
+}
+
+function showCreateTemplateModal() {
+  openModal(`
+    <div class="modal-header"><h2>Nieuw template aanmaken</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-body">
+      <label>Naam *</label>
+      <input id="tpl-name" placeholder="Bijv. Code Review" autocomplete="off" />
+      <label>Icoon</label>
+      <input id="tpl-icon" placeholder="📋" maxlength="2" style="font-size:24px" />
+      <label>Beschrijving</label>
+      <input id="tpl-desc" placeholder="Korte beschrijving" autocomplete="off" />
+      <label>Standaard titel prefix</label>
+      <input id="tpl-title" placeholder="[Review] " autocomplete="off" />
+      <label>Beschrijving template (Markdown)</label>
+      <textarea id="tpl-desc-template" rows="6" placeholder="## Beschrijving&#10;&#10;## Taken&#10;- [ ] "></textarea>
+      <label>Standaard prioriteit</label>
+      <select id="tpl-prio">
+        <option value="low">Laag</option>
+        <option value="medium" selected>Middel</option>
+        <option value="high">Hoog</option>
+        <option value="urgent">Urgent</option>
+      </select>
+      <label>Tags (komma gescheiden)</label>
+      <input id="tpl-tags" placeholder="review, code" autocomplete="off" />
+      <label>Checklists (JSON, optioneel)</label>
+      <textarea id="tpl-checklists" rows="4" placeholder='[{"title": "Stappen", "items": ["Stap 1", "Stap 2"]}]'></textarea>
+      <p style="font-size:11px;color:var(--ink2)">Checklists formaat: array van objecten met title en items (array van strings)</p>
+      <div class="modal-actions">
+        <button class="btn-ghost" onclick="closeModal()">Annuleer</button>
+        <button class="btn-primary" id="tpl-save">Aanmaken</button>
+      </div>
+    </div>`);
+
+  $('#tpl-save').addEventListener('click', () => {
+    const name = $('#tpl-name').value.trim();
+    if (!name) return toast('Naam is verplicht', 'error');
+    let checklists = [];
+    try {
+      checklists = JSON.parse($('#tpl-checklists').value || '[]');
+      if (!Array.isArray(checklists)) throw new Error();
+    } catch (e) {
+      checklists = [];
+    }
+    const template = {
+      name,
+      icon: $('#tpl-icon').value || '📋',
+      description: $('#tpl-desc').value.trim(),
+      title: $('#tpl-title').value,
+      description_template: $('#tpl-desc-template').value,
+      priority: $('#tpl-prio').value,
+      tags: $('#tpl-tags').value.split(',').map(s => s.trim()).filter(Boolean),
+      checklists
+    };
+    if (saveCustomTemplate(template)) {
+      toast('Template aangemaakt');
+      closeModal();
+      showManageTemplatesModal();
+    } else {
+      toast('Kon template niet bewaren', 'error');
+    }
   });
 }
 
@@ -926,6 +1421,12 @@ async function renderBoard(main, { id }) {
         <option value="">Toegewezen aan: iedereen</option>
         ${members.map((m) => `<option value="${m.id}">${esc(m.fullName || m.username)}</option>`).join('')}
       </select>
+      <div class="filter-saved" id="filter-saved">
+        <button type="button" class="btn-ghost btn-sm" id="btn-save-filter" title="Huidig filter bewaren">${icon('download', 14)} Filter bewaren</button>
+        <select id="saved-filters-select" style="min-width:160px">
+          <option value="">Geboden filters…</option>
+        </select>
+      </div>
     </div>
     <div class="kanban" id="kanban">${columns.map((c) => `
       <div class="kanban-column" data-col="${c.id}" data-position="${c.position}" style="--col:${esc(c.color)}">
@@ -1186,9 +1687,130 @@ async function renderBoard(main, { id }) {
       card.style.display = show ? '' : 'none';
     });
   };
+
+  const loadSavedFilters = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`mb_filters_${boardId}`) || '[]');
+      const select = $('#saved-filters-select');
+      select.innerHTML = '<option value="">Geboden filters…</option>' + saved.map((f, i) => `<option value="${i}">${esc(f.name)}</option>`).join('');
+    } catch (e) {}
+  };
+
+  const saveCurrentFilter = () => {
+    const name = prompt('Naam voor dit filter:');
+    if (!name) return;
+    const filter = {
+      name,
+      q: $('#filter-q').value,
+      prio: $('#filter-prio').value,
+      assignee: $('#filter-assignee').value
+    };
+    try {
+      const saved = JSON.parse(localStorage.getItem(`mb_filters_${boardId}`) || '[]');
+      saved.push(filter);
+      localStorage.setItem(`mb_filters_${boardId}`, JSON.stringify(saved));
+      loadSavedFilters();
+      toast('Filter opgeslagen');
+    } catch (e) { toast('Kon filter niet bewaren', 'error'); }
+  };
+
+  const applySavedFilter = (index) => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`mb_filters_${boardId}`) || '[]');
+      const f = saved[index];
+      if (!f) return;
+      $('#filter-q').value = f.q || '';
+      $('#filter-prio').value = f.prio || '';
+      $('#filter-assignee').value = f.assignee || '';
+      applyFilters();
+      toast(`Filter "${f.name}" toegepast`);
+    } catch (e) {}
+  };
+
   $('#filter-q')?.addEventListener('input', applyFilters);
   $('#filter-prio')?.addEventListener('change', applyFilters);
   $('#filter-assignee')?.addEventListener('change', applyFilters);
+  $('#btn-save-filter')?.addEventListener('click', saveCurrentFilter);
+  $('#saved-filters-select')?.addEventListener('change', (e) => {
+    if (e.target.value) applySavedFilter(Number(e.target.value));
+    e.target.value = '';
+  });
+  loadSavedFilters();
+
+  // Column drag-and-drop reordering
+  if (canManage) {
+    const kanban = $('#kanban');
+    let dragCol = null;
+    let dragColGhost = null;
+
+    $$('.kanban-column').forEach((colEl) => {
+      colEl.setAttribute('draggable', 'true');
+      colEl.style.cursor = 'grab';
+
+      colEl.addEventListener('dragstart', (e) => {
+        dragCol = colEl;
+        colEl.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', colEl.dataset.col);
+        dragColGhost = colEl.cloneNode(true);
+        dragColGhost.style.position = 'fixed';
+        dragColGhost.style.pointerEvents = 'none';
+        dragColGhost.style.zIndex = '9999';
+        dragColGhost.style.opacity = '0.5';
+        dragColGhost.style.width = colEl.offsetWidth + 'px';
+        document.body.appendChild(dragColGhost);
+      });
+
+      colEl.addEventListener('drag', (e) => {
+        if (dragColGhost) {
+          dragColGhost.style.left = (e.clientX - dragColGhost.offsetWidth / 2) + 'px';
+          dragColGhost.style.top = (e.clientY - 40) + 'px';
+        }
+      });
+
+      colEl.addEventListener('dragend', () => {
+        colEl.classList.remove('dragging');
+        if (dragColGhost) { dragColGhost.remove(); dragColGhost = null; }
+        $$('.kanban-column').forEach(c => c.classList.remove('drag-over'));
+        dragCol = null;
+      });
+
+      colEl.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        if (dragCol && dragCol !== colEl) {
+          colEl.classList.add('drag-over');
+        }
+      });
+
+      colEl.addEventListener('dragleave', () => {
+        colEl.classList.remove('drag-over');
+      });
+
+      colEl.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        colEl.classList.remove('drag-over');
+        if (!dragCol || dragCol === colEl) return;
+
+        const fromIndex = Number(dragCol.dataset.position);
+        const toIndex = Number(colEl.dataset.position);
+        const columns = Array.from(kanban.querySelectorAll('.kanban-column')).sort((a, b) => Number(a.dataset.position) - Number(b.dataset.position));
+        const movedCol = columns.splice(fromIndex, 1)[0];
+        columns.splice(toIndex, 0, movedCol);
+
+        try {
+          await api(`/boards/${boardId}/columns/reorder`, {
+            method: 'POST',
+            body: JSON.stringify({ columnIds: columns.map(c => Number(c.dataset.col)) })
+          });
+          toast('Kolommen herordend');
+          router();
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      });
+    });
+  }
 }
 
 function taskCardHTML(t) {
@@ -1277,40 +1899,70 @@ function showColumnModal(boardId, column) {
 
 function showTaskModal(board, columns, members, task) {
   const taskId = task?.id;
+
+  if (!task) {
+    showTaskTemplateModal(board, columns, members, (template) => {
+      if (template) {
+        showTaskModalWithTemplate(board, columns, members, template);
+      } else {
+        showTaskModalWithTemplate(board, columns, members, null);
+      }
+    });
+    return;
+  }
+
+  showTaskModalWithTemplate(board, columns, members, null, task);
+}
+
+function showTaskModalWithTemplate(board, columns, members, template, existingTask = null) {
+  const taskId = existingTask?.id;
+  const t = template || {};
+  const prefTitle = t.title || '';
+  const prefDesc = t.description_template || '';
+  const prefPrio = t.priority || 'medium';
+  const prefTags = (t.tags || []).join(', ');
+  const prefChecklists = t.checklists || [];
+
   openModal(`
-    <div class="modal-header"><h2>${task ? 'Taak bewerken' : 'Nieuwe taak'}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
+    <div class="modal-header"><h2>${existingTask ? 'Taak bewerken' : 'Nieuwe taak'}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <label>Titel *</label>
-      <input id="t-title" value="${task ? esc(task.title) : ''}" maxlength="255" placeholder="Wat moet er gebeuren?" autocomplete="off" />
+      <input id="t-title" value="${existingTask ? esc(existingTask.title) : esc(prefTitle)}" maxlength="255" placeholder="Wat moet er gebeuren?" autocomplete="off" />
       <label>Beschrijving</label>
-      <textarea id="t-desc" rows="4">${task ? esc(task.description || '') : ''}</textarea>
+      <textarea id="t-desc" rows="6">${existingTask ? esc(existingTask.description || '') : esc(prefDesc)}</textarea>
       <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div><label>Prioriteit</label>
           <select id="t-prio">
-            ${['low', 'medium', 'high', 'urgent'].map((p) => `<option value="${p}" ${(task?.priority || 'medium') === p ? 'selected' : ''}>${p}</option>`).join('')}
+            ${['low', 'medium', 'high', 'urgent'].map((p) => `<option value="${p}" ${(existingTask?.priority || prefPrio) === p ? 'selected' : ''}>${p}</option>`).join('')}
           </select>
         </div>
-        <div><label>Deadline</label><input id="t-due" type="date" value="${task?.due_date || ''}" /></div>
+        <div><label>Deadline</label><input id="t-due" type="date" value="${existingTask?.due_date || ''}" /></div>
       </div>
       <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
         <div><label>Kolom</label>
           <select id="t-col">
-            ${columns.map((c) => `<option value="${c.id}" ${task?.column_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+            ${columns.map((c) => `<option value="${c.id}" ${existingTask?.column_id === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
           </select>
         </div>
         <div><label>Toegewezen aan</label>
           <select id="t-assignee">
             <option value="">— niemand —</option>
-            ${members.map((m) => `<option value="${m.id}" ${task?.assignee_id === m.id ? 'selected' : ''}>${esc(m.fullName || m.username)}</option>`).join('')}
+            ${members.map((m) => `<option value="${m.id}" ${existingTask?.assignee_id === m.id ? 'selected' : ''}>${esc(m.fullName || m.username)}</option>`).join('')}
           </select>
         </div>
       </div>
       <label>Tags (komma gescheiden, max 5)</label>
-      <input id="t-tags" value="${(task?.tags || []).map((t) => t.name).join(', ')}" placeholder="bug, ui, backend" autocomplete="off" />
+      <input id="t-tags" value="${existingTask ? (existingTask.tags || []).map((tg) => tg.name).join(', ') : esc(prefTags)}" placeholder="bug, ui, backend" autocomplete="off" />
+      ${prefChecklists.length && !existingTask ? `
+        <div style="margin-top:12px;padding:12px;background:var(--brand-soft);border-radius:var(--radius-sm);border:1px solid var(--brand)">
+          <strong style="color:var(--brand)">${icon('check', 14)} Template bevat ${prefChecklists.length} checklist(s)</strong>
+          <div style="font-size:12px;color:var(--ink);margin-top:4px">Deze worden automatisch aangemaakt na het opslaan van de taak.</div>
+        </div>
+      ` : ''}
       <div class="modal-actions">
         <button class="btn-ghost" onclick="closeModal()">Annuleer</button>
-        ${task ? `<button class="btn-danger" id="t-delete">${icon('trash', 16)} Verwijderen</button>` : ''}
-        <button class="btn-primary" id="t-save">${task ? `${icon('check', 16)} Opslaan` : `${icon('plus', 16)} Aanmaken`}</button>
+        ${existingTask ? `<button class="btn-danger" id="t-delete">${icon('trash', 16)} Verwijderen</button>` : ''}
+        <button class="btn-primary" id="t-save">${existingTask ? `${icon('check', 16)} Opslaan` : `${icon('plus', 16)} Aanmaken`}</button>
       </div>
     </div>`);
 
@@ -1325,12 +1977,21 @@ function showTaskModal(board, columns, members, task) {
         tags: $('#t-tags').value.split(',').map((s) => s.trim()).filter(Boolean)
       };
       if (!body.title) return toast('Titel is verplicht', 'error');
-      if (task) {
+      if (existingTask) {
         await api(`/tasks/${taskId}`, { method: 'PATCH', body: JSON.stringify(body) });
         toast('Taak opgeslagen');
       } else {
-        await api(`/boards/${board.id}/tasks`, { method: 'POST', body: JSON.stringify({ ...body, columnId: Number($('#t-col').value) }) });
+        const { task } = await api(`/boards/${board.id}/tasks`, { method: 'POST', body: JSON.stringify({ ...body, columnId: Number($('#t-col').value) }) });
         toast('Taak aangemaakt');
+        
+        if (prefChecklists.length) {
+          for (const cl of prefChecklists) {
+            const { checklist } = await api(`/tasks/${task.id}/checklists`, { method: 'POST', body: JSON.stringify({ title: cl.title }) });
+            for (const itemTitle of cl.items || []) {
+              await api(`/tasks/${task.id}/checklists/${checklist.id}/items`, { method: 'POST', body: JSON.stringify({ title: itemTitle }) });
+            }
+          }
+        }
       }
       closeModal();
       router();
@@ -1375,7 +2036,7 @@ async function renderTask(main, { id }) {
           <span class="td-field"><span class="td-label">Deadline</span><span>${task.due_date ? fmtDate(task.due_date) : '—'}</span></span>
           <span class="td-field"><span class="td-label">Toegewezen</span><span>${task.assignee_id ? avatarHTML({ fullName: task.assignee_name, username: task.assignee_username, avatarColor: task.assignee_color }, 24) + ' ' + esc(task.assignee_name || task.assignee_username) : '—'}</span></span>
         </div>
-        ${task.description ? `<div style="margin:14px 0 4px"><span class="td-label">Beschrijving</span></div><div class="td-desc">${esc(task.description)}</div>` : ''}
+        ${task.description ? `<div style="margin:14px 0 4px"><span class="td-label">Beschrijving</span></div><div class="td-desc">${renderMarkdown(task.description)}</div>` : ''}
         <div style="margin-top:16px;font-size:12px;color:var(--ink3)">
           Aangemaakt door #${task.created_by} op ${fmtDate(task.created_at)}${task.updated_at ? ` · gewijzigd ${timeAgo(task.updated_at)}` : ''}
         </div>
@@ -1442,7 +2103,7 @@ async function renderTask(main, { id }) {
                     ${(c.user_id === state.user.id || myRole === 'admin') ? `<button class="c-delete" data-del="${c.id}" title="Verwijderen">${icon('trash', 13)}</button>` : ''}
                   </span>
                 </div>
-                <div class="c-text">${esc(c.body)}</div>
+                <div class="c-text">${renderMarkdown(c.body)}</div>
               </div>
             </div>`).join('') || '<div style="color:var(--ink3);font-size:14px">Nog geen reacties</div>'}
         </div>
@@ -1517,7 +2178,13 @@ async function renderSettings(main) {
       <div class="card-header"><span class="card-title">${icon('user', 16)} Profiel</span></div>
       <div class="card-body">
         <div style="display:flex;gap:16px;align-items:center;margin-bottom:20px">
-          ${avatarHTML(u, 52)}
+          <div class="avatar-upload" id="avatar-upload">
+            ${u.avatar_url ? `<img id="avatar-preview" class="avatar-preview" src="${esc(u.avatar_url)}" alt="Avatar" />` : avatarHTML(u, 80)}
+            <label class="avatar-upload-label" id="avatar-upload-label" title="Klik om avatar te uploaden">
+              ${icon('download', 24)}
+            </label>
+            <input type="file" id="avatar-file" accept="image/*" style="display:none" />
+          </div>
           <div>
             <div style="font-weight:700;font-size:16px">${esc(u.fullName || u.username)}</div>
             <div style="color:var(--ink2);font-size:13px">${esc(u.email)}</div>
@@ -1525,7 +2192,7 @@ async function renderSettings(main) {
         </div>
         <label>Volledige naam</label>
         <input id="s-name" value="${esc(u.fullName || '')}" autocomplete="name" />
-        <label>Avatar-kleur</label>
+        <label>Avatar-kleur (fallback als geen afbeelding)</label>
         <input id="s-color" type="color" value="${esc(u.avatarColor || '#4f46e5')}" style="width:80px;height:36px;padding:2px" />
         <label>Wachtwoord wijzigen</label>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
@@ -1537,6 +2204,47 @@ async function renderSettings(main) {
         </div>
       </div>
     </div>`;
+
+  const avatarUpload = $('#avatar-upload');
+  const avatarFile = $('#avatar-file');
+  const avatarLabel = $('#avatar-upload-label');
+  const avatarPreview = $('#avatar-preview');
+
+  avatarLabel.addEventListener('click', () => avatarFile.click());
+
+  avatarFile.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return toast('Alleen afbeeldingen toegestaan', 'error');
+    if (file.size > 2 * 1024 * 1024) return toast('Maximaal 2MB', 'error');
+
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    try {
+      const res = await fetch('/api/users/me/avatar', {
+        method: 'POST',
+        body: formData,
+        credentials: 'include',
+        headers: { Authorization: `Bearer ${state.token}` }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Upload mislukt');
+
+      if (avatarPreview) {
+        avatarPreview.src = data.avatar_url + '?t=' + Date.now();
+      } else {
+        avatarUpload.innerHTML = `<img id="avatar-preview" class="avatar-preview" src="${esc(data.avatar_url)}" alt="Avatar" />` + avatarUpload.innerHTML;
+      }
+      toast('Avatar geüpdatet');
+      state.user.avatar_url = data.avatar_url;
+      localStorage.setItem('mb_user', JSON.stringify(state.user));
+      renderTopbar();
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  });
+
   $('#s-save').addEventListener('click', async () => {
     try {
       const body = { fullName: $('#s-name').value, avatarColor: $('#s-color').value };
