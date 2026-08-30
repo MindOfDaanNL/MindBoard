@@ -11,10 +11,11 @@ router.use(authenticate);
 router.post('/', requireOrgRole('member'), async (req, res, next) => {
   try {
     const { orgId } = req.query;
-    const { name, description, color, icon } = req.body || {};
+    const { name, description, color, icon, board_name } = req.body || {};
     if (!orgId) return res.status(400).json({ error: 'orgId is verplicht (query parameter)' });
     if (!name || !name.trim()) return res.status(400).json({ error: 'Naam is verplicht' });
 
+    const boardName = (board_name && board_name.trim()) ? board_name.trim() : 'Kanban';
     const projectId = await transaction(async (conn) => {
       const r = await conn.query(
         'INSERT INTO projects (org_id, name, description, color, icon, created_by) VALUES (?, ?, ?, ?, ?, ?)',
@@ -28,8 +29,8 @@ router.post('/', requireOrgRole('member'), async (req, res, next) => {
         ]
       );
       const id = Number(r.insertId);
-      // Standaard bord "Kanban" aanmaken met klassieke kolommen
-      const b = await conn.query('INSERT INTO boards (project_id, name, position) VALUES (?, ?, 0)', [id, 'Kanban']);
+      // Standaard bord aanmaken met klassieke kolommen
+      const b = await conn.query('INSERT INTO boards (project_id, name, position) VALUES (?, ?, 0)', [id, boardName]);
       const boardId = Number(b.insertId);
       const cols = [
         ['📋 Te doen', '#e2e8f0'],

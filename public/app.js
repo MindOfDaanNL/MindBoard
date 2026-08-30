@@ -191,6 +191,7 @@ function showApp() {
   $('#view-auth').classList.add('hidden');
   $('#view-app').classList.remove('hidden');
   $('#sidebar').classList.remove('hidden');
+  $('#bottom-nav').classList.remove('hidden');
   renderTopbar();
 }
 
@@ -216,11 +217,23 @@ function renderTopbar() {
 
 function toggleSidebar() {
   const mobile = window.matchMedia('(max-width: 768px)').matches;
+  const sidebar = $('#sidebar');
+  const backdrop = $('#sidebar-backdrop');
   if (mobile) {
-    $('#sidebar').classList.toggle('open');
+    const isOpen = sidebar.classList.toggle('open');
+    backdrop.classList.toggle('visible', isOpen);
+    backdrop.classList.toggle('hidden', !isOpen);
   } else {
-    $('#sidebar').classList.toggle('collapsed');
+    sidebar.classList.toggle('collapsed');
   }
+}
+
+function closeSidebar() {
+  const sidebar = $('#sidebar');
+  const backdrop = $('#sidebar-backdrop');
+  sidebar.classList.remove('open');
+  backdrop.classList.remove('visible');
+  backdrop.classList.add('hidden');
 }
 
 function renderSidebar() {
@@ -306,7 +319,8 @@ async function router() {
   const render = routes[key] || routes[`#/${path}`] || renderDashboard;
 
   $$('.nav-item[data-nav]').forEach((n) => n.classList.toggle('active', n.dataset.nav === `#/${path}` || (path === 'org' && n.dataset.nav === `#/orgs`)));
-  $('#sidebar').classList.remove('open');
+  $$('.bottom-nav-item[data-nav]').forEach((n) => n.classList.toggle('active', n.dataset.nav === `#/${path}` || (path === 'org' && n.dataset.nav === `#/orgs`)));
+  closeSidebar();
 
   try {
     await render(main, { path, id, extra });
@@ -472,7 +486,7 @@ function showOrgModal() {
     <div class="modal-header"><h2>Nieuwe organisatie</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <label>Naam *</label>
-      <input id="org-name" placeholder="Bijv. ACME B.V." />
+      <input id="org-name" placeholder="Bijv. ACME B.V." autocomplete="organization" />
       <label>Beschrijving</label>
       <textarea id="org-desc" rows="3" placeholder="Waar houdt deze organisatie zich mee bezig?"></textarea>
       <div class="modal-actions">
@@ -578,7 +592,7 @@ function showEditOrgModal(org, orgId) {
     <div class="modal-header"><h2>Organisatie bewerken</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <label>Naam</label>
-      <input id="eorg-name" value="${esc(org.name)}" />
+      <input id="eorg-name" value="${esc(org.name)}" autocomplete="organization" />
       <label>Beschrijving</label>
       <textarea id="eorg-desc" rows="3">${esc(org.description || '')}</textarea>
       <div class="modal-actions">
@@ -600,7 +614,7 @@ function showInviteModal(orgId) {
     <div class="modal-header"><h2>Lid uitnodigen</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <label>E-mailadres</label>
-      <input id="inv-email" type="email" placeholder="collega@bedrijf.nl" />
+      <input id="inv-email" type="email" placeholder="collega@bedrijf.nl" autocomplete="email" />
       <label>Rol</label>
       <select id="inv-role">
         <option value="member">member</option>
@@ -664,14 +678,16 @@ function showProjectModal(orgId) {
   openModal(`
     <div class="modal-header"><h2>Nieuw project</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
-      ${hasOrgs ? `
-      <label>Organisatie *</label>
-      <select id="proj-org">
-        ${orgs.map((o) => `<option value="${o.id}" ${o.id === orgId ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}
-      </select>
-      <label>Naam *</label>
-      <input id="proj-name" placeholder="Bijv. Website relaunch" />
-      <label>Beschrijving</label>
+${hasOrgs ? `
+       <label>Organisatie *</label>
+       <select id="proj-org">
+         ${orgs.map((o) => `<option value="${o.id}" ${o.id === orgId ? 'selected' : ''}>${esc(o.name)}</option>`).join('')}
+       </select>
+       <label>Naam *</label>
+       <input id="proj-name" placeholder="Bijv. Website relaunch" autocomplete="off" />
+       <label>Eerste bord naam</label>
+       <input id="proj-board-name" placeholder="Bijv. Sprint 1, Kanban, Backlog..." autocomplete="off" />
+       <label>Beschrijving</label>
       <textarea id="proj-desc" rows="3"></textarea>
       <label>Kleur</label>
       <input id="proj-color" type="color" value="#4f46e5" style="width:80px;height:36px;padding:2px" />
@@ -696,7 +712,12 @@ function showProjectModal(orgId) {
       if (!orgIdSel || !name) return toast('Organisatie en naam verplicht', 'error');
       const { project } = await api(`/projects?orgId=${orgIdSel}`, {
         method: 'POST',
-        body: JSON.stringify({ name, description: $('#proj-desc').value, color: $('#proj-color').value })
+        body: JSON.stringify({ 
+          name, 
+          description: $('#proj-desc').value, 
+          color: $('#proj-color').value,
+          board_name: $('#proj-board-name').value
+        })
       });
       toast(`Project "${project.name}" aangemaakt`);
       closeModal();
@@ -832,7 +853,7 @@ function showBoardModal(projectId) {
     <div class="modal-header"><h2>Nieuw bord</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <label>Naam</label>
-      <input id="board-name" placeholder="Bijv. Sprint 5" />
+      <input id="board-name" placeholder="Bijv. Sprint 5" autocomplete="off" />
       <div class="modal-actions">
         <button class="btn-ghost" onclick="closeModal()">Annuleer</button>
         <button class="btn-primary" id="board-create">Aanmaken</button>
@@ -853,7 +874,7 @@ function showEditProjectModal(project, projectId) {
     <div class="modal-header"><h2>Project bewerken</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <label>Naam</label>
-      <input id="ep-name" value="${esc(project.name)}" />
+      <input id="ep-name" value="${esc(project.name)}" autocomplete="off" />
       <label>Beschrijving</label>
       <textarea id="ep-desc" rows="3">${esc(project.description || '')}</textarea>
       <label>Kleur</label>
@@ -945,16 +966,190 @@ async function renderBoard(main, { id }) {
     renderBoard(main, { id });
   }));
 
-  // task click + drag & drop
+  // task click + drag & drop (mouse + touch)
+  let dragTaskId = null;
+  let dragGhost = null;
+  let dragStartX = 0;
+  let dragStartY = 0;
+  let isTouchDrag = false;
+
   $$('.kanban-card').forEach((card) => {
-    card.addEventListener('click', () => { location.hash = `#/task/${card.dataset.id}`; });
+    card.addEventListener('click', (e) => {
+      if (!card.dataset.dragged) {
+        location.hash = `#/task/${card.dataset.id}`;
+      }
+    });
+
+    // Mouse drag
     card.setAttribute('draggable', canEdit ? 'true' : 'false');
     card.addEventListener('dragstart', (e) => {
       if (e.dataTransfer) e.dataTransfer.setData('text/plain', card.dataset.id);
       card.classList.add('dragging');
+      dragTaskId = card.dataset.id;
     });
-    card.addEventListener('dragend', () => card.classList.remove('dragging'));
+    card.addEventListener('dragend', () => {
+      card.classList.remove('dragging');
+      dragTaskId = null;
+    });
+
+    // Touch drag
+    if (canEdit) {
+      card.addEventListener('touchstart', (e) => {
+        if (e.touches.length !== 1) return;
+        const touch = e.touches[0];
+        dragStartX = touch.clientX;
+        dragStartY = touch.clientY;
+        isTouchDrag = false;
+        dragTaskId = card.dataset.id;
+
+        // Long press to initiate drag
+        card.dataset.dragTimeout = setTimeout(() => {
+          isTouchDrag = true;
+          card.classList.add('dragging');
+          card.dataset.dragged = 'true';
+
+          // Create ghost element
+          dragGhost = card.cloneNode(true);
+          dragGhost.style.position = 'fixed';
+          dragGhost.style.pointerEvents = 'none';
+          dragGhost.style.zIndex = '9999';
+          dragGhost.style.opacity = '0.9';
+          dragGhost.style.transform = 'rotate(3deg)';
+          dragGhost.style.width = card.offsetWidth + 'px';
+          document.body.appendChild(dragGhost);
+          updateGhostPosition(touch.clientX, touch.clientY);
+        }, 300);
+      }, { passive: true });
+
+      card.addEventListener('touchmove', (e) => {
+        if (e.touches.length !== 1) return;
+        const touch = e.touches[0];
+        const deltaX = Math.abs(touch.clientX - dragStartX);
+        const deltaY = Math.abs(touch.clientY - dragStartY);
+
+        if (dragTaskId && (deltaX > 10 || deltaY > 10)) {
+          clearTimeout(card.dataset.dragTimeout);
+          if (!isTouchDrag) {
+            isTouchDrag = true;
+            card.classList.add('dragging');
+            card.dataset.dragged = 'true';
+
+            dragGhost = card.cloneNode(true);
+            dragGhost.style.position = 'fixed';
+            dragGhost.style.pointerEvents = 'none';
+            dragGhost.style.zIndex = '9999';
+            dragGhost.style.opacity = '0.9';
+            dragGhost.style.transform = 'rotate(3deg)';
+            dragGhost.style.width = card.offsetWidth + 'px';
+            document.body.appendChild(dragGhost);
+          }
+          updateGhostPosition(touch.clientX, touch.clientY);
+          e.preventDefault();
+
+          // Check drop target
+          const dropTarget = document.elementFromPoint(touch.clientX, touch.clientY);
+          const dropZone = dropTarget?.closest('[data-drop]');
+          $$('[data-drop]').forEach((dz) => dz.closest('.kanban-column').classList.remove('dragover'));
+          if (dropZone) dropZone.closest('.kanban-column').classList.add('dragover');
+        }
+      }, { passive: false });
+
+      card.addEventListener('touchend', (e) => {
+        clearTimeout(card.dataset.dragTimeout);
+        if (isTouchDrag && dragTaskId) {
+          const touch = e.changedTouches[0];
+          const dropTarget = document.elementFromPoint(touch.clientX, touch.clientY);
+          const dropZone = dropTarget?.closest('[data-drop]');
+          if (dropZone) {
+            const columnId = Number(dropZone.dataset.drop);
+            moveTask(dragTaskId, columnId);
+          }
+        }
+        cleanupDrag(card);
+      });
+
+      card.addEventListener('touchcancel', () => {
+        clearTimeout(card.dataset.dragTimeout);
+        cleanupDrag(card);
+      });
+    }
   });
+
+  function updateGhostPosition(x, y) {
+    if (dragGhost) {
+      dragGhost.style.left = (x - dragGhost.offsetWidth / 2) + 'px';
+      dragGhost.style.top = (y - 40) + 'px';
+    }
+  }
+
+  function cleanupDrag(card) {
+    card.classList.remove('dragging');
+    delete card.dataset.dragged;
+    if (dragGhost) {
+      dragGhost.remove();
+      dragGhost = null;
+    }
+    $$('[data-drop]').forEach((dz) => dz.closest('.kanban-column').classList.remove('dragover'));
+    dragTaskId = null;
+    isTouchDrag = false;
+  }
+
+  // Alternative: Tap-to-move for mobile (select task, then tap column header)
+  let selectedTaskId = null;
+  $$('.kanban-card').forEach((card) => {
+    card.addEventListener('click', (e) => {
+      if (card.dataset.dragged) return;
+      
+      // On mobile, allow tap-to-select for move
+      const isMobile = window.matchMedia('(max-width: 768px)').matches;
+      if (isMobile && canEdit && !isTouchDrag) {
+        if (selectedTaskId === card.dataset.id) {
+          // Already selected, deselect
+          selectedTaskId = null;
+          card.classList.remove('selected');
+          $$('.kanban-column-header').forEach(h => h.classList.remove('drop-target'));
+        } else {
+          // Select this task
+          $$('.kanban-card').forEach(c => c.classList.remove('selected'));
+          $$('.kanban-column-header').forEach(h => h.classList.remove('drop-target'));
+          selectedTaskId = card.dataset.id;
+          card.classList.add('selected');
+          $$('.kanban-column-header').forEach(h => h.classList.add('drop-target'));
+        }
+        return;
+      }
+      
+      location.hash = `#/task/${card.dataset.id}`;
+    });
+  });
+
+  // Tap column header to move selected task
+  if (canEdit) {
+    $$('.kanban-column-header').forEach((header) => {
+      header.addEventListener('click', () => {
+        if (selectedTaskId) {
+          const columnId = Number(header.closest('.kanban-column').dataset.col);
+          moveTask(selectedTaskId, columnId);
+          selectedTaskId = null;
+          $$('.kanban-card').forEach(c => c.classList.remove('selected'));
+          $$('.kanban-column-header').forEach(h => h.classList.remove('drop-target'));
+        }
+      });
+    });
+    
+    // Also allow tapping column body
+    $$('[data-drop]').forEach((drop) => {
+      drop.addEventListener('click', () => {
+        if (selectedTaskId) {
+          const columnId = Number(drop.dataset.drop);
+          moveTask(selectedTaskId, columnId);
+          selectedTaskId = null;
+          $$('.kanban-card').forEach(c => c.classList.remove('selected'));
+          $$('.kanban-column-header').forEach(h => h.classList.remove('drop-target'));
+        }
+      });
+    });
+  }
 
   if (canEdit) {
     $$('[data-drop]').forEach((drop) => {
@@ -1020,11 +1215,19 @@ async function moveTask(taskId, columnId) {
 }
 
 function showColumnModal(boardId, column) {
+  const emojis = ['📋', '📝', '🔥', '⚡', '🚀', '🎯', '💡', '🐛', '🔧', '🎨', '📦', '🚧', '⏳', '✅', '📤', '📥', '🗂️', '📁', '🏷️', '🏁', '💬', '👀', '🔍', '🧪', '🚢', '🎉', '❓', '❗', '💤', '🛑', '⏸️', '🔄', '📌', '💾', '🗑️', '⭐', '🎪', '🏗️', '🧱', '📐', '🔬', '🛠️', '📊', '📈', '📉', '🎯', '🥅', '🏆', '🎁', '📦', '📮', '📬', '📭', '🗃️', '🗄️', '📂', '📁'];
+  const emojiPicker = emojis.map(e => `<button type="button" class="emoji-btn" data-emoji="${e}" style="font-size:20px;padding:6px;border:none;background:var(--bg);border-radius:8px;cursor:pointer;min-width:44px;min-height:44px;">${e}</button>`).join('');
+
   openModal(`
     <div class="modal-header"><h2>${column ? 'Kolom bewerken' : 'Nieuwe kolom'}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <label>Naam *</label>
-      <input id="col-name" value="${column ? esc(column.name) : ''}" placeholder="Bijv. In review" />
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <input id="col-emoji" readonly style="font-size:24px;width:50px;text-align:center;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px;" placeholder="📋" value="${column ? (column.name.match(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u) ? column.name.match(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u)[0] : '📋') : '📋'}" />
+        <input id="col-name" value="${column ? esc(column.name.replace(/^[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]\s*/u, '')) : ''}" placeholder="Bijv. In review" autocomplete="off" style="flex:1" />
+        <button type="button" id="col-emoji-toggle" class="icon-btn" title="Emoji kiezen" style="width:44px;height:44px">${icon('tag', 20)}</button>
+      </div>
+      <div id="col-emoji-picker" class="hidden" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;max-height:200px;overflow-y:auto;padding:8px;background:var(--bg);border-radius:8px">${emojiPicker}</div>
       <label>Kleur</label>
       <input id="col-color" type="color" value="${column ? esc(column.color) : '#e2e8f0'}" style="width:80px;height:36px;padding:2px" />
       <label>WIP-limiet (optioneel)</label>
@@ -1034,12 +1237,36 @@ function showColumnModal(boardId, column) {
         <button class="btn-primary" id="col-save">Opslaan</button>
       </div>
     </div>`);
+  
+  // Emoji picker toggle
+  $('#col-emoji-toggle').addEventListener('click', () => {
+    $('#col-emoji-picker').classList.toggle('hidden');
+  });
+  
+  // Emoji selection
+  $$('#col-emoji-picker .emoji-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      $('#col-emoji').value = btn.dataset.emoji;
+      $('#col-emoji-picker').classList.add('hidden');
+    });
+  });
+  
+  // Close picker when clicking outside
+  document.addEventListener('click', function closeEmojiPicker(e) {
+    if (!e.target.closest('#col-emoji-toggle') && !e.target.closest('#col-emoji-picker')) {
+      $('#col-emoji-picker').classList.add('hidden');
+      document.removeEventListener('click', closeEmojiPicker);
+    }
+  });
+
   $('#col-save').addEventListener('click', async () => {
     try {
+      const emoji = $('#col-emoji').value || '📋';
+      const name = `${emoji} ${$('#col-name').value}`.trim();
       if (column) {
-        await api(`/columns/${column.id}`, { method: 'PATCH', body: JSON.stringify({ name: $('#col-name').value, color: $('#col-color').value, wipLimit: $('#col-wip').value }) });
+        await api(`/columns/${column.id}`, { method: 'PATCH', body: JSON.stringify({ name, color: $('#col-color').value, wipLimit: $('#col-wip').value }) });
       } else {
-        await api(`/boards/${boardId}/columns`, { method: 'POST', body: JSON.stringify({ name: $('#col-name').value, color: $('#col-color').value }) });
+        await api(`/boards/${boardId}/columns`, { method: 'POST', body: JSON.stringify({ name, color: $('#col-color').value }) });
       }
       toast('Opgeslagen');
       closeModal();
@@ -1054,7 +1281,7 @@ function showTaskModal(board, columns, members, task) {
     <div class="modal-header"><h2>${task ? 'Taak bewerken' : 'Nieuwe taak'}</h2><button class="modal-close" onclick="closeModal()">✕</button></div>
     <div class="modal-body">
       <label>Titel *</label>
-      <input id="t-title" value="${task ? esc(task.title) : ''}" maxlength="255" placeholder="Wat moet er gebeuren?" />
+      <input id="t-title" value="${task ? esc(task.title) : ''}" maxlength="255" placeholder="Wat moet er gebeuren?" autocomplete="off" />
       <label>Beschrijving</label>
       <textarea id="t-desc" rows="4">${task ? esc(task.description || '') : ''}</textarea>
       <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -1079,7 +1306,7 @@ function showTaskModal(board, columns, members, task) {
         </div>
       </div>
       <label>Tags (komma gescheiden, max 5)</label>
-      <input id="t-tags" value="${(task?.tags || []).map((t) => t.name).join(', ')}" placeholder="bug, ui, backend" />
+      <input id="t-tags" value="${(task?.tags || []).map((t) => t.name).join(', ')}" placeholder="bug, ui, backend" autocomplete="off" />
       <div class="modal-actions">
         <button class="btn-ghost" onclick="closeModal()">Annuleer</button>
         ${task ? `<button class="btn-danger" id="t-delete">${icon('trash', 16)} Verwijderen</button>` : ''}
@@ -1194,7 +1421,7 @@ async function renderTask(main, { id }) {
       <div class="card-header"><span class="card-title">${icon('list', 16)} Checklist toevoegen</span></div>
       <div class="card-body">
         <div class="checklist-add">
-          <input id="cl-new-name" placeholder="Bijv. Stappenplan" />
+          <input id="cl-new-name" placeholder="Bijv. Stappenplan" autocomplete="off" />
           <button class="btn-primary" id="cl-new-btn">${icon('plus', 16)} Toevoegen</button>
         </div>
       </div>
@@ -1297,7 +1524,7 @@ async function renderSettings(main) {
           </div>
         </div>
         <label>Volledige naam</label>
-        <input id="s-name" value="${esc(u.fullName || '')}" />
+        <input id="s-name" value="${esc(u.fullName || '')}" autocomplete="name" />
         <label>Avatar-kleur</label>
         <input id="s-color" type="color" value="${esc(u.avatarColor || '#4f46e5')}" style="width:80px;height:36px;padding:2px" />
         <label>Wachtwoord wijzigen</label>
@@ -1355,18 +1582,18 @@ async function renderAdmin(main) {
             ${users.users.map((u) => `
               <tr data-uid="${u.id}">
                 <td>${avatarHTML(u, 26)} ${esc(u.full_name || u.username)}</td>
-                <td style="color:var(--ink2)">${esc(u.email)}</td>
-                <td>
+                <td data-label="E-mail" style="color:var(--ink2)">${esc(u.email)}</td>
+                <td data-label="Rol">
                   <select class="role-select" data-role="${u.id}">
                     <option value="user" ${u.role === 'user' ? 'selected' : ''}>user</option>
                     <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>admin</option>
                   </select>
                 </td>
-                <td><span class="status-pill status-${esc(u.status)}">${esc(u.status)}</span></td>
-                <td>${u.org_count}</td>
-                <td>${u.task_count}</td>
-                <td style="color:var(--ink2)">${fmtDate(u.created_at)}</td>
-                <td>
+                <td data-label="Status"><span class="status-pill status-${esc(u.status)}">${esc(u.status)}</span></td>
+                <td data-label="Org.">${u.org_count}</td>
+                <td data-label="Taken">${u.task_count}</td>
+                <td data-label="Aangemaakt" style="color:var(--ink2)">${fmtDate(u.created_at)}</td>
+                <td data-label="Actie">
                   ${u.id !== state.user.id ? `<button class="btn-ghost btn-sm" data-status="${u.id}">${u.status === 'active' ? 'Uitschakelen' : 'Activeren'}</button>` : '<span style="color:var(--ink3)">jij</span>'}
                 </td>
               </tr>`).join('')}
@@ -1381,7 +1608,7 @@ async function renderAdmin(main) {
           <thead><tr><th>Organisatie</th><th>Leden</th><th>Projecten</th><th>Taken</th></tr></thead>
           <tbody>
             ${stats.topOrgs.map((o) => `
-              <tr><td style="font-weight:600">${esc(o.name)}</td><td>${o.members}</td><td>${o.projects}</td><td>${o.tasks}</td></tr>`).join('')}
+              <tr><td style="font-weight:600">${esc(o.name)}</td><td data-label="Leden">${o.members}</td><td data-label="Projecten">${o.projects}</td><td data-label="Taken">${o.tasks}</td></tr>`).join('')}
           </tbody>
         </table>
       </div>
@@ -1477,6 +1704,64 @@ function init() {
     loadNotifications();
   });
   $('#btn-new-org').addEventListener('click', () => showOrgModal());
+
+  // Sidebar backdrop click to close
+  $('#sidebar-backdrop').addEventListener('click', closeSidebar);
+
+  // Swipe gestures for sidebar on mobile
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let isSidebarOpen = false;
+  const sidebar = $('#sidebar');
+  const backdrop = $('#sidebar-backdrop');
+
+  document.addEventListener('touchstart', (e) => {
+    const mobile = window.matchMedia('(max-width: 768px)').matches;
+    if (!mobile) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+    isSidebarOpen = sidebar.classList.contains('open');
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    const mobile = window.matchMedia('(max-width: 768px)').matches;
+    if (!mobile) return;
+    const touchX = e.touches[0].clientX;
+    const touchY = e.touches[0].clientY;
+    const deltaX = touchX - touchStartX;
+    const deltaY = touchY - touchStartY;
+
+    // Only handle horizontal swipes
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+      if (!isSidebarOpen && deltaX > 0 && touchStartX < 30) {
+        // Swipe from left edge to open
+        sidebar.style.transform = `translateX(${Math.min(deltaX, 240)}px)`;
+      } else if (isSidebarOpen && deltaX < 0) {
+        // Swipe left to close
+        sidebar.style.transform = `translateX(${Math.max(240 + deltaX, 0)}px)`;
+        const opacity = Math.max(1 + deltaX / 240, 0);
+        backdrop.style.opacity = opacity;
+        backdrop.style.visibility = opacity > 0 ? 'visible' : 'hidden';
+      }
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', (e) => {
+    const mobile = window.matchMedia('(max-width: 768px)').matches;
+    if (!mobile) return;
+    const touchX = e.changedTouches[0].clientX;
+    const deltaX = touchX - touchStartX;
+
+    sidebar.style.transform = '';
+    backdrop.style.opacity = '';
+    backdrop.style.visibility = '';
+
+    if (!isSidebarOpen && deltaX > 80 && touchStartX < 30) {
+      toggleSidebar();
+    } else if (isSidebarOpen && deltaX < -80) {
+      closeSidebar();
+    }
+  }, { passive: true });
 
   // search
   let searchTimer;
