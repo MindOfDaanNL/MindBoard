@@ -1,0 +1,20 @@
+# Node
+node_modules/
+npm-debug.log*
+
+# Dev map — lokaal gereedschap, builds en downloads (niet op GitHub)
+Dev/
+
+# Data & secrets
+data/
+.env
+*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Capacitor / Android build output
+capacitor/android/
+capacitor/node_modules/
+capacitor/www/

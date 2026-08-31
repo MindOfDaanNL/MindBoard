@@ -1,0 +1,20 @@
+{
+  "name": "mindboard-app",
+  "version": "2.0.0",
+  "description": "MindBoard Android app (Capacitor-wrapping van de PWA)",
+  "private": true,
+  "scripts": {
+    "sync": "node sync.js",
+    "cap:add": "npx cap add android",
+    "cap:sync": "npm run sync && npx cap sync android",
+    "cap:open": "npx cap open android",
+    "apk": "cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.1.2",
+    "@capacitor/core": "^6.1.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.1.2"
+  }
+}
