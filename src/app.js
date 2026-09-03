@@ -74,6 +74,7 @@ app.use('/api/invitations', invitationsRoutes);
 app.use('/api/projects', projectsRoutes);
 app.use('/api/boards', boardsRoutes);
 app.use('/api/projects/:projectId/boards', boardsRoutes);
+app.use('/api/columns', boardsRoutes.columnsRouter);
 app.use('/api/boards/:boardId/tasks', tasksRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/notifications', notificationsRoutes);

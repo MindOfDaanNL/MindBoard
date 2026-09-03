@@ -122,14 +122,14 @@ router.get('/:projectId/metrics', requireProjectRole('viewer'), async (req, res,
     );
 
     const createdRows = await query(
-      `SELECT DATE(created_at) AS d, COUNT(*) AS n FROM tasks
+      `SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS d, COUNT(*) AS n FROM tasks
        WHERE board_id IN (SELECT id FROM boards WHERE project_id = ?) AND created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
-       GROUP BY DATE(created_at)`,
+       GROUP BY DATE_FORMAT(created_at, '%Y-%m-%d')`,
       [projectId]
     );
 
     const activityRows = await query(
-      `SELECT created_at, metadata FROM activity_log
+      `SELECT DATE_FORMAT(created_at, '%Y-%m-%d') AS d, metadata FROM activity_log
        WHERE org_id = (SELECT org_id FROM projects WHERE id = ?) AND action = 'task.moved'
          AND created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)
        ORDER BY created_at ASC LIMIT 2000`,
@@ -137,14 +137,13 @@ router.get('/:projectId/metrics', requireProjectRole('viewer'), async (req, res,
     );
 
     const createdMap = {};
-    for (const r of createdRows) createdMap[r.d instanceof Date ? r.d.toISOString().slice(0, 10) : String(r.d).slice(0, 10)] = r.n;
+    for (const r of createdRows) createdMap[r.d] = r.n;
 
     const doneMap = {};
     for (const r of activityRows) {
       const meta = (typeof r.metadata === 'string' ? JSON.parse(r.metadata || '{}') : r.metadata) || {};
       if (meta.toColumn && doneRe.test(String(meta.toColumn))) {
-        const key = r.created_at instanceof Date ? r.created_at.toISOString().slice(0, 10) : String(r.created_at).slice(0, 10);
-        doneMap[key] = (doneMap[key] || 0) + 1;
+        doneMap[r.d] = (doneMap[r.d] || 0) + 1;
       }
     }
 
@@ -157,7 +156,7 @@ router.get('/:projectId/metrics', requireProjectRole('viewer'), async (req, res,
     }
 
     const cols = await query(
-      'SELECT id, name FROM columns c JOIN boards b ON b.id = c.board_id WHERE b.project_id = ?',
+      'SELECT c.id, c.name FROM columns c JOIN boards b ON b.id = c.board_id WHERE b.project_id = ?',
       [projectId]
     );
     const doneColIds = cols.filter((c) => doneRe.test(c.name)).map((c) => c.id);

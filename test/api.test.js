@@ -7,7 +7,7 @@ const assert = require('node:assert');
 const request = require('supertest');
 
 const app = require('../src/app');
-const { query } = require('../src/db');
+const { query, queryOne } = require('../src/db');
 const { randomToken } = require('../src/utils');
 
 const EMAIL = `test-${Date.now()}@mindboard.test`;
@@ -33,6 +33,7 @@ test.before(async () => {
 test.after(async () => {
   // Ruim testdata op
   if (orgId) await query('DELETE FROM orgs WHERE id = ?', [orgId]);
+  if (user2Id) await query('DELETE FROM users WHERE id = ?', [user2Id]);
   if (userId) await query('DELETE FROM users WHERE id = ?', [userId]);
   const { pool } = require('../src/db');
   await pool.end();
@@ -184,33 +185,36 @@ test('RBAC: niet-ingelogd geeft 401', async () => {
 // ============================================================================
 
 test('WIP: verplaatsen naar volle kolom geeft 409', async () => {
-  const board = (await request(app).get(`/api/boards/${boardId}`).set('Authorization', `Bearer ${token}`)).body;
-  const col2 = board.columns[1];
-  await request(app).patch(`/api/columns/${col2.id}`).set('Authorization', `Bearer ${token}`).send({ wipLimit: 1 });
+  const newCol = await request(app).post(`/api/boards/${boardId}/columns`).set('Authorization', `Bearer ${token}`).send({ name: 'WIP-kolom' });
+  assert.strictEqual(newCol.status, 201, newCol.body.error || '');
+  const colId = newCol.body.column.id;
+  await request(app).patch(`/api/columns/${colId}`).set('Authorization', `Bearer ${token}`).send({ wipLimit: 1 });
 
   const t1 = await request(app).post(`/api/boards/${boardId}/tasks`).set('Authorization', `Bearer ${token}`).send({ title: 'WIP test 1' });
   assert.strictEqual(t1.status, 201);
   const t2 = await request(app).post(`/api/boards/${boardId}/tasks`).set('Authorization', `Bearer ${token}`).send({ title: 'WIP test 2' });
   assert.strictEqual(t2.status, 201);
 
-  const move1 = await request(app).post(`/api/tasks/${t1.body.task.id}/move`).set('Authorization', `Bearer ${token}`).send({ columnId: col2.id });
+  const move1 = await request(app).post(`/api/tasks/${t1.body.task.id}/move`).set('Authorization', `Bearer ${token}`).send({ columnId: colId });
   assert.strictEqual(move1.status, 200);
-  const move2 = await request(app).post(`/api/tasks/${t2.body.task.id}/move`).set('Authorization', `Bearer ${token}`).send({ columnId: col2.id });
+  const move2 = await request(app).post(`/api/tasks/${t2.body.task.id}/move`).set('Authorization', `Bearer ${token}`).send({ columnId: colId });
   assert.strictEqual(move2.status, 409);
   assert.match(move2.body.error, /WIP-limiet/);
 
-  await request(app).patch(`/api/columns/${col2.id}`).set('Authorization', `Bearer ${token}`).send({ wipLimit: null });
+  await request(app).patch(`/api/columns/${colId}`).set('Authorization', `Bearer ${token}`).send({ wipLimit: null });
 });
 
 test('WIP: taak aanmaken in volle kolom geeft 409', async () => {
-  const board = (await request(app).get(`/api/boards/${boardId}`).set('Authorization', `Bearer ${token}`)).body;
-  const col = board.columns[0];
-  const created = await request(app).post(`/api/boards/${boardId}/tasks`).set('Authorization', `Bearer ${token}`).send({ title: 'WIP vol' });
-  assert.strictEqual(created.status, 201);
-  await request(app).patch(`/api/columns/${col.id}`).set('Authorization', `Bearer ${token}`).send({ wipLimit: 0 });
-  const blocked = await request(app).post(`/api/boards/${boardId}/tasks`).set('Authorization', `Bearer ${token}`).send({ title: 'WIP geblokkeerd' });
+  const newCol = await request(app).post(`/api/boards/${boardId}/columns`).set('Authorization', `Bearer ${token}`).send({ name: 'WIP-vol' });
+  assert.strictEqual(newCol.status, 201, newCol.body.error || '');
+  const colId = newCol.body.column.id;
+  const first = await request(app).post(`/api/boards/${boardId}/tasks`).set('Authorization', `Bearer ${token}`).send({ title: 'Eerste', columnId: colId });
+  assert.strictEqual(first.status, 201);
+  await request(app).patch(`/api/columns/${colId}`).set('Authorization', `Bearer ${token}`).send({ wipLimit: 1 });
+  const blocked = await request(app).post(`/api/boards/${boardId}/tasks`).set('Authorization', `Bearer ${token}`).send({ title: 'WIP geblokkeerd', columnId: colId });
   assert.strictEqual(blocked.status, 409);
-  await request(app).patch(`/api/columns/${col.id}`).set('Authorization', `Bearer ${token}`).send({ wipLimit: null });
+  assert.match(blocked.body.error, /WIP-limiet/);
+  await request(app).patch(`/api/columns/${colId}`).set('Authorization', `Bearer ${token}`).send({ wipLimit: null });
 });
 
 // ============================================================================
@@ -229,7 +233,7 @@ test('projecttoegang: org-lid zonder projectlidmaatschap krijgt 403', async () =
   token2 = reg.body.token;
   user2Id = reg.body.user.id;
 
-  await request(app).post(`/api/orgs/${orgId}/members`).set('Authorization', `Bearer ${token}`).send({ userId: user2Id, role: 'viewer' });
+  await request(app).post(`/api/orgs/${orgId}/members`).set('Authorization', `Bearer ${token}`).send({ username: reg.body.user.username, role: 'viewer' });
 
   const denied = await request(app).get(`/api/projects/${projectId}`).set('Authorization', `Bearer ${token2}`);
   assert.strictEqual(denied.status, 403);
@@ -313,7 +317,10 @@ test('recurring: scheduler maakt de volgende occurrence aan', async () => {
   const spawned = await checkRecurring();
   assert.ok(spawned >= 1);
 
-  const board = (await request(app).get(`/api/boards/${boardId}`).set('Authorization', `Bearer ${token}`)).body;
-  const today = new Date().toISOString().slice(0, 10);
-  assert.ok(board.tasks.some((t) => t.title === 'Wekelijkse check' && t.due_date === today && t.id !== rec.body.task.id));
+  const todayRow = await queryOne("SELECT DATE_FORMAT(NOW(), '%Y-%m-%d') AS today");
+  const spawnedRows = await query(
+    `SELECT DATE_FORMAT(due_date, '%Y-%m-%d') AS d FROM tasks WHERE title = 'Wekelijkse check' AND id <> ?`,
+    [rec.body.task.id]
+  );
+  assert.ok(spawnedRows.some((r) => r.d === todayRow.today));
 });

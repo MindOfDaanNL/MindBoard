@@ -1,6 +1,6 @@
 // MindBoard service worker — netwerk-eerst, geen langdurige caching.
 // Zorgt dat updates altijd direct doorkomen; offlinemogelijkheden komen later.
-const CACHE = 'mindboard-v8';
+const CACHE = 'mindboard-v9';
 const CORE = ['/', '/index.html', '/style.css', '/app.js', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (event) => {

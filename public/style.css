@@ -1058,3 +1058,47 @@ label { display: block; font-size: 13px; font-weight: 600; color: var(--ink2); m
 .list-table th.sortable:hover { color: var(--brand); }
 .list-row { cursor: pointer; }
 .list-row:hover { background: var(--brand-soft); }
+
+/* ---------- UI-polish fixes ---------- */
+
+/* List view op mobiel: blijft een scrollbare tabel (niet de admin-kaarten-transform) */
+@media (max-width: 768px) {
+  .list-table { display: block; overflow-x: auto; white-space: nowrap; }
+  .list-table thead, .list-table tbody, .list-table tr { display: revert; }
+  .list-table td { display: revert; padding: 12px 18px; border-bottom: 1px solid var(--bg); }
+  .list-table td::before { content: none; }
+  .list-table tr:hover td { background: var(--bg); }
+}
+
+/* View-toggle mobiel: volle breedte, knoppen vullen */
+@media (max-width: 768px) {
+  .page-actions .view-toggle { flex: 1 1 100%; display: flex; }
+  .page-actions .view-toggle .view-btn { flex: 1; }
+}
+
+/* Toasts op mobiel boven de bottom-nav */
+@media (max-width: 768px) {
+  #toast-root { left: 12px; right: 12px; bottom: calc(72px + var(--safe-bottom)); align-items: stretch; }
+  .toast { max-width: none; }
+}
+
+/* Kolom-header mag wrappen op smalle kolommen */
+.kanban-column-header { flex-wrap: wrap; }
+.kanban-column-header .col-actions { margin-left: auto; }
+
+/* Recurrence-rij in taakmodal: 1 kolom op kleine schermen */
+@media (max-width: 640px) {
+  .modal .row-3 { grid-template-columns: 1fr !important; }
+}
+
+/* WIP-badge egaal naast teller */
+.kanban-column-header .wip { white-space: nowrap; }
+
+/* Comment markdown: blockquotes + lijsten */
+.c-text blockquote { border-left: 3px solid var(--brand); padding-left: 12px; margin: 8px 0; color: var(--ink2); font-style: italic; }
+.c-text ul, .c-text ol { margin: 8px 0; padding-left: 24px; }
+.c-text li { margin: 3px 0; }
+.c-text h1, .c-text h2, .c-text h3, .c-text h4 { margin: 10px 0 4px; }
+
+/* Notificatielijst scrollt binnen het paneel */
+.notif-panel #notif-list { flex: 1; min-height: 0; overflow-y: auto; }

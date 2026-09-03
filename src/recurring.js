@@ -37,22 +37,24 @@ function computeNextAt(dueDate, rule, interval) {
 
 async function checkRecurring() {
   const due = await query(
-    `SELECT t.*, b.project_id, c.id AS column_id
+    `SELECT t.*, b.project_id,
+            DATE_FORMAT(t.recurrence_next_at, '%Y-%m-%d') AS next_date,
+            DATE_FORMAT(t.recurrence_end_date, '%Y-%m-%d') AS end_date
      FROM tasks t
      JOIN boards b ON b.id = t.board_id
-     JOIN columns c ON c.id = t.column_id
      WHERE t.recurrence_rule <> 'none' AND t.recurrence_next_at IS NOT NULL AND t.recurrence_next_at <= NOW()
      ORDER BY t.recurrence_next_at ASC
      LIMIT 50`
   );
-  const todayStr = formatDate(new Date());
+  const todayRow = await queryOne("SELECT DATE_FORMAT(NOW(), '%Y-%m-%d') AS today");
+  const todayStr = todayRow ? todayRow.today : formatDate(new Date());
   let spawned = 0;
   for (const src of due) {
     try {
       const rule = src.recurrence_rule;
       const interval = src.recurrence_interval || 1;
-      const endStr = src.recurrence_end_date ? String(src.recurrence_end_date).slice(0, 10) : null;
-      let current = String(src.recurrence_next_at).slice(0, 10);
+      const endStr = src.end_date || null;
+      let current = src.next_date;
       let last = current;
       let stop = false;
 

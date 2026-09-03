@@ -24,15 +24,18 @@ Gebouwd op **Node.js + Express + MariaDB**, met een **PWA**-frontend (installeer
 ### Projecten & borden
 - Projecten binnen een organisatie, met projectleden en rollen (beheerbaar in de UI)
 - Meerdere kanban-borden per project, elk met eigen kolommen
-- Borden/kolommen zelf beheren, met kleuren en **WIP-limieten**
-- **Bordfilters**: zoeken, prioriteit en toegewezen persoon
+- Borden/kolommen zelf beheren, met kleuren en **WIP-limieten** (afgedwongen: verplaatsen naar een volle kolom wordt geweigerd)
+- **Bordfilters**: zoeken, prioriteit en toegewezen persoon (+ opgeslagen filters)
+- **Lijstweergave** naast het kanban-bord (sorteerbare tabel)
 - Taken met prioriteit (laag/middel/hoog/urgent), deadline, assignee, tags, beschrijving
+- **Recurring taken**: dagelijks/wekelijks/maandelijks herhalen met scheduler
 - **Drag & drop** taken verplaatsen tussen kolommen
 - **Checklists (subtaken)** per taak met voortgangsindicatie
-- Comments per taak
+- Comments per taak, met **@mentions** (autocomplete + notificatie)
 - **Activiteitenlog** (wie deed wat, met paginering)
-- **Notificaties** bij toewijzing en reacties (klikbaar, met ongelezen-teller)
-- **Zoeken** over taken en projecten
+- **Notificaties** bij toewijzing en reacties (klikbaar, met ongelezen-teller) + **voorkeuren per type**
+- **Zoeken** over taken en projecten (met advanced syntax: `assignee:`, `label:`, `priority:`, `due:`, `is:`, `project:`)
+- **Agile statistieken** per project (voortgang, 14-daagse trend, per persoon/kolom)
 - **CSV-export** van een project (Excel-compatibel)
 - **Dark mode** 🌙
 
@@ -128,9 +131,11 @@ JWT_SECRET=verander-dit-in-een-lang-geheim
 | PATCH/DELETE | `/api/tasks/:taskId/items/:itemId` | Item afvinken/bewerken/verwijderen |
 | DELETE | `/api/tasks/:taskId/checklists/:clId` | Checklist verwijderen |
 | GET | `/api/notifications?page=&limit=` | Notificaties (met paginering) |
-| GET | `/api/search?q=…` | Zoeken over taken/projecten |
+| GET/PATCH | `/api/notifications/prefs` | Notificatievoorkeuren per type |
+| GET | `/api/search?q=…` | Zoeken (advanced syntax: `assignee:me`, `label:bug`, `priority:high`, `due:week`, `is:open`, `project:naam`) |
 | GET | `/api/activity?orgId=…&page=&limit=` | Activiteitenlog (met paginering) |
 | GET | `/api/projects/:projectId/export` | CSV-export van het project |
+| GET | `/api/projects/:projectId/metrics` | Agile statistieken (kolommen, prioriteit, assignees, 14-daagse serie) |
 | GET | `/api/admin/stats` | Platformstatistieken |
 | GET | `/api/admin/users` | Alle gebruikers |
 
@@ -230,6 +235,10 @@ MindBoard/
 | Org bewerken | ❌ | ❌ | ✅ | ✅ | ✅ |
 | Org verwijderen | ❌ | ❌ | ❌ | ✅ | ✅ |
 | Gebruikers beheren (platform) | ❌ | ❌ | ❌ | ❌ | ✅ |
+
+> **Projecttoegang:** toegang tot een project heeft alleen wie expliciet aan het
+> project is toegevoegd (`project_members`) plus de org-`owner`/`admin` (die
+> overal toegang hebben). Een gewone org-lid ziet projecten dus niet automatisch.
 
 ---
 

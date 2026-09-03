@@ -18,7 +18,7 @@ async function ensureTaskAccess(req, res, next) {
   const taskId = Number(req.params.taskId || req.params.id);
   const task = await queryOne(
     `SELECT t.*, b.project_id, c.name AS column_name,
-            a.full_name AS assignee_name, a.username AS assignee_username, a.avatar_color AS assignee_color,
+            a.full_name AS assignee_name, a.username AS assignee_username, a.avatar_color AS assignee_color, a.avatar_url AS assignee_avatar_url,
             cr.full_name AS creator_name, cr.username AS creator_username
      FROM tasks t
      JOIN columns c ON c.id = t.column_id
@@ -66,7 +66,7 @@ router.get('/:taskId', ensureTaskAccess, async (req, res, next) => {
     );
     const columns = await query('SELECT * FROM columns WHERE board_id = ? ORDER BY position ASC', [req.task.board_id]);
     const members = await query(
-      `SELECT u.id, u.username, u.full_name, u.avatar_color FROM users u
+      `SELECT u.id, u.username, u.full_name, u.avatar_color, u.avatar_url FROM users u
        JOIN org_members om ON om.user_id = u.id AND om.org_id = ? ORDER BY u.full_name`,
       [board.org_id]
     );

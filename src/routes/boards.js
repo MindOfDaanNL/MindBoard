@@ -4,7 +4,9 @@ const { authenticate } = require('../middleware/auth');
 const { requireProjectRole, requireOrgRole, getProjectRole } = require('../middleware/rbac');
 
 const router = express.Router({ mergeParams: true });
+const columnsRouter = express.Router({ mergeParams: true });
 router.use(authenticate);
+columnsRouter.use(authenticate);
 
 // ---------------------------------------------------------------------------
 // Borden
@@ -27,7 +29,7 @@ router.get('/:boardId', async (req, res, next) => {
     const columns = await query('SELECT * FROM columns WHERE board_id = ? ORDER BY position ASC, id ASC', [boardId]);
 
     const tasks = await query(
-      `SELECT t.*, a.full_name AS assignee_name, a.username AS assignee_username, a.avatar_color AS assignee_color,
+      `SELECT t.*, a.full_name AS assignee_name, a.username AS assignee_username, a.avatar_color AS assignee_color, a.avatar_url AS assignee_avatar_url,
               c.name AS column_name, c.color AS column_color
        FROM tasks t
        JOIN columns c ON c.id = t.column_id
@@ -171,7 +173,7 @@ router.post('/:boardId/columns', async (req, res, next) => {
 });
 
 // PATCH /api/columns/:columnId
-router.patch('/columns/:columnId', async (req, res, next) => {
+columnsRouter.patch('/:columnId', async (req, res, next) => {
   try {
     const columnId = Number(req.params.columnId);
     const column = await queryOne(
@@ -203,7 +205,7 @@ router.patch('/columns/:columnId', async (req, res, next) => {
 });
 
 // DELETE /api/columns/:columnId
-router.delete('/columns/:columnId', async (req, res, next) => {
+columnsRouter.delete('/:columnId', async (req, res, next) => {
   try {
     const columnId = Number(req.params.columnId);
     const column = await queryOne(
@@ -246,3 +248,4 @@ router.post('/:boardId/columns/reorder', async (req, res, next) => {
 });
 
 module.exports = router;
+module.exports.columnsRouter = columnsRouter;

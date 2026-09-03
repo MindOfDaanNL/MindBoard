@@ -71,6 +71,8 @@ const I18N = {
     notifications: 'Notificaties',
     new_org: 'Nieuwe organisatie',
     no_orgs: 'Nog geen organisaties',
+    no_projects: 'Geen projecten',
+    no_projects_in_org: 'Nog geen projecten in deze organisatie',
 
     hello: 'Hallo',
     new_project: 'Nieuw project',
@@ -303,7 +305,7 @@ const I18N = {
     filter_prio_all: 'Prioriteit: alle',
     filter_assignee_all: 'Toegewezen aan: iedereen',
     save_filter: 'Filter bewaren',
-    saved_filters: 'Geboden filters…',
+    saved_filters: 'Opgeslagen filters…',
     filter_name_prompt: 'Naam voor dit filter:',
     filter_saved: 'Filter opgeslagen',
     filter_save_fail: 'Kon filter niet bewaren',
@@ -395,6 +397,8 @@ const I18N = {
     notifications: 'Notifications',
     new_org: 'New organization',
     no_orgs: 'No organizations yet',
+    no_projects: 'No projects',
+    no_projects_in_org: 'No projects in this organization yet',
 
     hello: 'Hello',
     new_project: 'New project',
@@ -810,7 +814,9 @@ const ICONS = {
   inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1.1z"/>',
   layers: '<path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/>',
   mail: '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 7l-10 6L2 7"/>',
-  camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>'
+  camera: '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+  at: '<circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-3.9 7.9"/>',
+  repeat: '<path d="M17 2l4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="M7 22l-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>'
 };
 function icon(name, size = 18) {
   return `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -1071,7 +1077,7 @@ function avatarHTML(user, size = 30) {
 function fmtDate(iso) {
   if (!iso) return '';
   const locale = state.lang === 'en' ? 'en-US' : 'nl-NL';
-  const d = new Date(iso);
+  const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + 'T00:00:00') : new Date(iso);
   return d.toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
@@ -1088,8 +1094,9 @@ function renderMarkdown(text) {
   if (!text) return '';
   const lines = String(text).replace(/\r\n/g, '\n').split('\n');
   let html = '';
-  let inList = false;
-  const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+  let listOpen = false;
+  let listOrdered = false;
+  const closeList = () => { if (listOpen) { html += listOrdered ? '</ol>' : '</ul>'; listOpen = false; } };
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -1112,8 +1119,25 @@ function renderMarkdown(text) {
       html += `<h${lvl}>${inline(m[2])}</h${lvl}>`;
       continue;
     }
-    if (/^[-*]\s+/.test(trimmed) || /^\d+[.)]\s+/.test(trimmed)) {
-      if (!inList) { html += '<ul>'; inList = true; }
+    if (/^>\s?/.test(trimmed)) {
+      closeList();
+      const inner = trimmed.replace(/^>\s?/, '');
+      html += `<blockquote>${inline(inner)}</blockquote>`;
+      continue;
+    }
+    const ordered = /^\d+[.)]\s+/.test(trimmed);
+    const unordered = /^[-*]\s+/.test(trimmed);
+    if (ordered || unordered) {
+      if (!listOpen) {
+        listOrdered = ordered;
+        html += listOrdered ? '<ol>' : '<ul>';
+        listOpen = true;
+      } else if (listOrdered !== ordered) {
+        closeList();
+        listOrdered = ordered;
+        html += listOrdered ? '<ol>' : '<ul>';
+        listOpen = true;
+      }
       html += `<li>${inline(trimmed.replace(/^[-*]\s+/, '').replace(/^\d+[.)]\s+/, ''))}</li>`;
       continue;
     }
@@ -1128,7 +1152,10 @@ function renderMarkdown(text) {
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
       .replace(/`([^`\n]+)`/g, '<code>$1</code>')
-      .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      .replace(/\[(.+?)\]\((.+?)\)/g, (m, label, href) => {
+        const safe = /^(https?:|mailto:)/i.test(href.trim()) ? href.trim() : '#';
+        return `<a href="${safe}" target="_blank" rel="noopener">${label}</a>`;
+      });
   }
 }
 
@@ -1243,7 +1270,7 @@ async function loadNotifications() {
 }
 
 function notifIcon(type) {
-  const map = { assignment: 'user', comment: 'comment', info: 'bell' };
+  const map = { assignment: 'user', comment: 'comment', mention: 'at', info: 'bell' };
   return icon(map[type] || 'bell', 16);
 }
 
@@ -1579,7 +1606,7 @@ async function renderOrg(main, { id }) {
                   <div class="t-meta">${p.board_count} ${t('board').toLowerCase()}s · ${p.task_count} ${t('task').toLowerCase()}s</div>
                 </div>
                 <span class="dot" style="width:10px;height:10px;border-radius:50%;background:${esc(p.color)};display:inline-block;flex-shrink:0"></span>
-              </div>`).join('') : `<div class="empty-state"><div class="big">📂</div>${t('no_orgs')}</div>`}
+              </div>`).join('') : `<div class="empty-state"><div class="big">📂</div>${t('no_projects_in_org')}</div>`}
           </div>
         </div>
       </div>
@@ -1708,9 +1735,10 @@ async function renderProjects(main) {
             <span>${icon('org', 13)} ${esc(p.org_name)}</span>
             <span>${icon('clipboard', 13)} ${p.task_count} ${t('task').toLowerCase()}s</span>
           </div>
-        </div>`).join('') || `<div class="empty-state"><div class="big">📂</div>${t('no_orgs')}</div>`}
+        </div>`).join('') || `<div class="empty-state"><div class="big">📂</div>${t('no_projects')}<br><br><button class="btn-primary" id="btn-proj-all2">${t('new_project')}</button></div>`}
     </div>`;
   $('#btn-proj-all')?.addEventListener('click', () => showProjectModal());
+  $('#btn-proj-all2')?.addEventListener('click', () => showProjectModal());
 }
 
 function showProjectModal(orgId) {
@@ -1777,23 +1805,23 @@ async function renderProject(main, { id }) {
   const activity = await api(`/activity?orgId=${project.org_id}`).catch(() => ({ activity: [] }));
   const projActivity = (activity.activity || []).filter((a) => a.entity_name || a.action.startsWith('task'));
   const metrics = await api(`/projects/${projectId}/metrics`).catch(() => null);
-
-  const pct = metrics && metrics.totals.tasks ? Math.round((metrics.totals.done / metrics.totals.tasks) * 100) : 0;
-  const maxSeries = metrics ? Math.max(1, ...metrics.series.map((s) => s.created + s.done)) : 1;
-  const maxAssign = metrics ? Math.max(1, ...metrics.byAssignee.map((a) => a.n)) : 1;
-  const metricsHTML = metrics ? `
+  const m = metrics && Array.isArray(metrics.series) ? metrics : null;
+  const pct = m && m.totals && m.totals.tasks ? Math.round((m.totals.done / m.totals.tasks) * 100) : 0;
+  const maxSeries = m ? Math.max(1, ...m.series.map((s) => s.created + s.done)) : 1;
+  const maxAssign = m && m.byAssignee && m.byAssignee.length ? Math.max(1, ...m.byAssignee.map((a) => a.n)) : 1;
+  const metricsHTML = m ? `
     <div class="card" style="margin-bottom:20px">
       <div class="card-header"><span class="card-title">${icon('activity', 16)} ${t('metrics')}</span></div>
       <div class="card-body">
         <div class="metric-stats" style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
-          <span style="font-size:14px"><strong>${metrics.totals.tasks}</strong> ${t('metric_tasks')}</span>
-          <span style="font-size:14px"><strong>${metrics.totals.open}</strong> ${t('metric_open')}</span>
-          <span style="font-size:14px"><strong>${metrics.totals.done}</strong> ${t('metric_done')}</span>
+          <span style="font-size:14px"><strong>${m.totals ? m.totals.tasks : 0}</strong> ${t('metric_tasks')}</span>
+          <span style="font-size:14px"><strong>${m.totals ? m.totals.open : 0}</strong> ${t('metric_open')}</span>
+          <span style="font-size:14px"><strong>${m.totals ? m.totals.done : 0}</strong> ${t('metric_done')}</span>
           <div class="progress" style="flex:1;min-width:140px"><div class="progress-bar" style="width:${pct}%"></div></div>
           <span style="font-size:13px;color:var(--ink2)">${pct}%</span>
         </div>
         <div class="metric-chart" style="display:flex;align-items:flex-end;gap:3px;height:80px;margin-bottom:6px">
-          ${metrics.series.map((s) => `
+          ${m.series.map((s) => `
             <div style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;gap:1px;height:100%">
               <div title="${s.date} ${t('metric_done')} ${s.done}" style="background:#4ade80;height:${Math.round((s.done / maxSeries) * 100)}%"></div>
               <div title="${s.date} ${t('metric_tasks').toLowerCase()} ${s.created}" style="background:var(--brand);height:${Math.round((s.created / maxSeries) * 100)}%"></div>
@@ -1803,7 +1831,7 @@ async function renderProject(main, { id }) {
         <div class="grid-2">
           <div>
             <strong style="font-size:13px">${t('metric_by_assignee')}</strong>
-            ${metrics.byAssignee.slice(0, 6).map((a) => `
+            ${(m.byAssignee || []).slice(0, 6).map((a) => `
               <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
                 ${avatarHTML(a, 22)}
                 <span style="flex:1;font-size:13px">${esc(a.full_name || a.username)}</span>
@@ -1813,7 +1841,7 @@ async function renderProject(main, { id }) {
           </div>
           <div>
             <strong style="font-size:13px">${t('metric_by_column')}</strong>
-            ${metrics.byColumn.map((c) => `
+            ${(m.byColumn || []).map((c) => `
               <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
                 <span class="col-dot" style="background:${esc(c.color)}"></span>
                 <span style="flex:1;font-size:13px">${esc(c.name)}</span>
@@ -2451,7 +2479,7 @@ async function renderBoard(main, { id }) {
     try {
       const saved = JSON.parse(localStorage.getItem(`mb_filters_${boardId}`) || '[]');
       const select = $('#saved-filters-select');
-      select.innerHTML = '<option value="">Geboden filters…</option>' + saved.map((f, i) => `<option value="${i}">${esc(f.name)}</option>`).join('');
+      select.innerHTML = `<option value="">${t('saved_filters')}</option>` + saved.map((f, i) => `<option value="${i}">${esc(f.name)}</option>`).join('');
     } catch (e) {}
   };
 
@@ -2509,8 +2537,10 @@ async function renderBoard(main, { id }) {
       colEl.addEventListener('dragstart', (e) => {
         dragCol = colEl;
         colEl.classList.add('dragging');
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/plain', colEl.dataset.col);
+        if (e.dataTransfer) {
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', colEl.dataset.col);
+        }
         dragColGhost = colEl.cloneNode(true);
         dragColGhost.style.position = 'fixed';
         dragColGhost.style.pointerEvents = 'none';
@@ -2622,7 +2652,7 @@ function renderBoardListView({ board, columns, tasks, members, myRole }) {
                   <td><span style="font-weight:600">${esc(t.title)}</span> ${t.recurrence_rule && t.recurrence_rule !== 'none' ? '🔁' : ''}</td>
                   <td><span class="column-badge" style="--col:${esc(t.column_color || '#e2e8f0')}">${esc(t.column_name)}</span></td>
                   <td>${priorityChip(t.priority)}</td>
-                  <td>${t.assignee_id ? avatarHTML({ fullName: t.assignee_name, username: t.assignee_username, avatarColor: t.assignee_color }, 22) + ' ' + esc(t.assignee_name || t.assignee_username) : '—'}</td>
+                  <td>${t.assignee_id ? avatarHTML({ fullName: t.assignee_name, username: t.assignee_username, avatarColor: t.assignee_color, avatarUrl: t.assignee_avatar_url }, 22) + ' ' + esc(t.assignee_name || t.assignee_username) : '—'}</td>
                   <td style="white-space:nowrap">${t.due_date ? fmtDate(t.due_date) : '—'}</td>
                   <td>${(t.tags || []).map((tg) => `<span class="tag-chip">${esc(tg.name)}</span>`).join('') || '—'}</td>
                 </tr>`).join('') || `<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--ink3)">${t('noData')}</td></tr>`}
@@ -2641,17 +2671,19 @@ function renderBoardListView({ board, columns, tasks, members, myRole }) {
   };
   render();
 }
-  const overdue = t.due_date && new Date(t.due_date) < new Date();
+
+function taskCardHTML(task) {
+  const overdue = task.due_date && new Date(task.due_date) < new Date();
   return `
-    <div class="kanban-card" data-id="${t.id}" draggable="true" style="border-left-color:${esc(t.column_color || 'transparent')}">
-      <div class="k-title">${esc(t.title)}</div>
-      ${t.description ? `<div class="k-desc">${esc(t.description)}</div>` : ''}
+    <div class="kanban-card" data-id="${task.id}" draggable="true" style="border-left-color:${esc(task.column_color || 'transparent')}">
+      <div class="k-title">${esc(task.title)}</div>
+      ${task.description ? `<div class="k-desc">${esc(task.description)}</div>` : ''}
       <div class="k-meta">
-        ${t.recurrence_rule && t.recurrence_rule !== 'none' ? `<span class="k-rec" title="${t('recurring')}: ${t('recurrence_' + t.recurrence_rule)}">🔁</span>` : ''}
-        ${priorityChip(t.priority)}
-        ${t.tags?.length ? `<span class="k-tags">${t.tags.map((tg) => `<span class="tag-chip">${esc(tg.name)}</span>`).join('')}</span>` : ''}
-        ${t.due_date ? `<span class="k-due ${overdue ? 'overdue' : ''}">${icon('clock', 12)} ${fmtDate(t.due_date)}</span>` : ''}
-        ${t.assignee_id ? `<span class="k-assignee">${avatarHTML({ fullName: t.assignee_name, username: t.assignee_username, avatarColor: t.assignee_color }, 24)}</span>` : ''}
+        ${task.recurrence_rule && task.recurrence_rule !== 'none' ? `<span class="k-rec" title="${t('recurring')}: ${t('recurrence_' + task.recurrence_rule)}">🔁</span>` : ''}
+        ${priorityChip(task.priority)}
+        ${task.tags?.length ? `<span class="k-tags">${task.tags.map((tg) => `<span class="tag-chip">${esc(tg.name)}</span>`).join('')}</span>` : ''}
+        ${task.due_date ? `<span class="k-due ${overdue ? 'overdue' : ''}">${icon('clock', 12)} ${fmtDate(task.due_date)}</span>` : ''}
+        ${task.assignee_id ? `<span class="k-assignee">${avatarHTML({ fullName: task.assignee_name, username: task.assignee_username, avatarColor: task.assignee_color, avatarUrl: task.assignee_avatar_url }, 24)}</span>` : ''}
       </div>
     </div>`;
 }
@@ -2754,7 +2786,7 @@ openModal(`
         </div>
         <div><label>${t('task_due')}</label><input id="t-due" type="date" value="${task?.due_date || ''}" /></div>
       </div>
-      <div class="row" style="display:grid;grid-template-columns:1fr 0.6fr 1fr;gap:12px">
+      <div class="row row-3" style="display:grid;grid-template-columns:1fr 0.6fr 1fr;gap:12px">
         <div><label>${t('task_recurrence')}</label>
           <select id="t-recurrence">
             <option value="none" ${(task?.recurrence_rule || 'none') === 'none' ? 'selected' : ''}>${t('recurrence_none')}</option>
@@ -2884,7 +2916,7 @@ async function renderTask(main, { id }) {
         <div class="td-fields">
           <span class="td-field"><span class="td-label">${t('column_label')}</span><span class="column-badge" style="--col:${esc(task.column_color || '#e2e8f0')}">${esc(task.column_name)}</span></span>
           <span class="td-field"><span class="td-label">${t('deadline')}</span><span>${task.due_date ? fmtDate(task.due_date) : '—'}</span></span>
-          <span class="td-field"><span class="td-label">${t('assigned')}</span><span>${task.assignee_id ? avatarHTML({ fullName: task.assignee_name, username: task.assignee_username, avatarColor: task.assignee_color, avatarUrl: task.assignee_color }, 24) + ' ' + esc(task.assignee_name || task.assignee_username) : '—'}</span></span>
+          <span class="td-field"><span class="td-label">${t('assigned')}</span><span>${task.assignee_id ? avatarHTML({ fullName: task.assignee_name, username: task.assignee_username, avatarColor: task.assignee_color, avatarUrl: task.assignee_avatar_url }, 24) + ' ' + esc(task.assignee_name || task.assignee_username) : '—'}</span></span>
         </div>
         ${task.description ? `<div style="margin:14px 0 4px"><span class="td-label">${t('description')}</span></div><div class="td-desc">${renderMarkdown(task.description)}</div>` : ''}
         <div style="margin-top:16px;font-size:12px;color:var(--ink3)">
